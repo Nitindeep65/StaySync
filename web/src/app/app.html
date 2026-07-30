@@ -1,0 +1,115 @@
+<div class="page">
+  <header class="topbar">
+    <div>
+      <h1>StaySync</h1>
+      <p class="subtitle">Seaside Cottage · base rate £{{ baseRate() }}/night</p>
+    </div>
+  </header>
+
+  @if (status(); as s) {
+    <div class="banner" [class.error]="s.kind === 'error'" [class.success]="s.kind === 'success'">
+      <span>{{ s.text }}</span>
+      <button class="banner-close" (click)="dismissStatus()">✕</button>
+    </div>
+  }
+
+  <div class="layout">
+    <section class="calendar-panel">
+      <div class="month-nav">
+        <button (click)="prevMonth()">‹ Prev</button>
+        <h2>{{ monthLabel() }}</h2>
+        <button (click)="nextMonth()">Next ›</button>
+      </div>
+
+      <div class="weekday-row">
+        @for (label of weekdayLabels; track label) {
+          <div class="weekday">{{ label }}</div>
+        }
+      </div>
+
+      @for (week of weeks(); track $index) {
+        <div class="week-row">
+          @for (cell of week; track cell.date) {
+            <button
+              type="button"
+              class="day-cell"
+              [class.out-of-month]="!cell.inMonth"
+              [class.status-available]="cell.day?.status === 'available'"
+              [class.status-booked]="cell.day?.status === 'booked'"
+              [class.status-blocked]="cell.day?.status === 'blocked'"
+              [class.selected]="cell.inMonth && isInSelection(cell.date)"
+              (click)="onDayClick(cell)"
+            >
+              <span class="day-number">{{ cell.date.slice(8) }}</span>
+              @if (cell.day && cell.inMonth) {
+                <span class="day-rate">£{{ cell.day.rate }}</span>
+                @if (cell.day.status !== 'available') {
+                  <span class="day-status">{{ cell.day.status }}</span>
+                }
+                @if (cell.day.bookingGuest) {
+                  <span class="day-guest">{{ cell.day.bookingGuest }}</span>
+                }
+              }
+            </button>
+          }
+        </div>
+      }
+    </section>
+
+    <aside class="controls">
+      <div class="card">
+        <h3>Rate &amp; availability</h3>
+        <p class="hint">{{ rangeLabel() }}</p>
+        <button class="link-btn" (click)="clearSelection()">Clear selection</button>
+
+        <label class="field">
+          Rate (£/night)
+          <input type="number" min="1" [ngModel]="rateValue()" (ngModelChange)="rateValue.set($event)" />
+        </label>
+        <div class="btn-row">
+          <button (click)="applyRate()">Set rate</button>
+          <button (click)="applyBlock(true)">Block</button>
+          <button (click)="applyBlock(false)">Unblock</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>New booking</h3>
+        <label class="field">
+          Check-in
+          <input type="date" [ngModel]="bookingCheckIn()" (ngModelChange)="bookingCheckIn.set($event)" />
+        </label>
+        <label class="field">
+          Check-out
+          <input type="date" [ngModel]="bookingCheckOut()" (ngModelChange)="bookingCheckOut.set($event)" />
+        </label>
+        <label class="field">
+          Guest name
+          <input type="text" [ngModel]="bookingGuest()" (ngModelChange)="bookingGuest.set($event)" placeholder="Jane Doe" />
+        </label>
+        <button (click)="submitBooking()">Book</button>
+      </div>
+
+      <div class="card">
+        <h3>Channel feed</h3>
+        <p class="hint">Imports the bundled mock reservation feed and reconciles it into the calendar.</p>
+        <button (click)="importMockFeed()">Import mock feed</button>
+
+        @if (importSummary(); as summary) {
+          <ul class="summary-list">
+            <li>Imported: {{ summary.imported.length || 'none' }} {{ summary.imported.join(', ') }}</li>
+            <li>Duplicates in feed: {{ summary.duplicatesInFeed.length || 'none' }} {{ summary.duplicatesInFeed.join(', ') }}</li>
+            <li>Already imported: {{ summary.alreadyImported.length || 'none' }} {{ summary.alreadyImported.join(', ') }}</li>
+            <li>Cancelled: {{ summary.cancelled.length || 'none' }} {{ summary.cancelled.join(', ') }}</li>
+            <li>
+              Conflicts: {{ summary.conflicts.length || 'none' }}
+              @for (c of summary.conflicts; track c.id) {
+                <div class="conflict-line">{{ c.id }} — {{ c.reason }}</div>
+              }
+            </li>
+          </ul>
+        }
+      </div>
+    </aside>
+  </div>
+</div>
