@@ -47,7 +47,8 @@ const dayMs = 24 * 60 * 60 * 1000;
 
 /**
  * Dynamic pricing (stretch goal): a weekend surcharge applied on top of the
- * base rate, plus a minimum-stay rule enforced on new direct bookings.
+ * base rate, plus a minimum-stay rule enforced on new direct bookings that
+ * include a Friday or Saturday night — a pure weeknight stay has no minimum.
  * An explicit rate override always wins over the weekend rule — see
  * `effectiveRate`.
  */
@@ -177,10 +178,11 @@ export function createBooking(
     return { ok: false, error: 'checkOut must be after checkIn.', reason: 'invalid-range' };
   }
 
-  if (nights.length < MIN_STAY_NIGHTS) {
+  const includesWeekendNight = nights.some((date) => isWeekendNight(date));
+  if (includesWeekendNight && nights.length < MIN_STAY_NIGHTS) {
     return {
       ok: false,
-      error: `Minimum stay is ${MIN_STAY_NIGHTS} nights (requested ${nights.length}).`,
+      error: `Minimum stay is ${MIN_STAY_NIGHTS} nights for stays that include a Fri/Sat night (requested ${nights.length}).`,
       reason: 'min-stay'
     };
   }

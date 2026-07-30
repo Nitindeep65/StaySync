@@ -81,16 +81,24 @@ test('dynamic pricing: weekend nights (Fri/Sat) carry a surcharge unless overrid
   assert.equal(rangeAfterOverride[0].rate, 100, 'an explicit override wins over the weekend rule');
 });
 
-test('dynamic pricing: minimum-stay rule rejects bookings shorter than the minimum', () => {
+test('dynamic pricing: minimum-stay rule only applies to stays that include a weekend night', () => {
   const overrides = new Map<string, DayRecord>();
-  const oneNight = createBooking(overrides, baseRate, '2026-08-10', '2026-08-11', 'Guest', 'booking-3');
-  assert.equal(oneNight.ok, false);
-  assert.equal(oneNight.reason, 'min-stay');
-  assert.match(oneNight.error ?? '', /minimum stay/i);
 
-  const twoNights = createBooking(overrides, baseRate, '2026-08-10', '2026-08-12', 'Guest', 'booking-4');
-  assert.equal(twoNights.ok, true);
-  assert.equal(twoNights.updates?.length, MIN_STAY_NIGHTS);
+  // 2026-08-07 is a Friday: a 1-night stay covering only that night must hit the minimum.
+  const oneWeekendNight = createBooking(overrides, baseRate, '2026-08-07', '2026-08-08', 'Guest', 'booking-3');
+  assert.equal(oneWeekendNight.ok, false);
+  assert.equal(oneWeekendNight.reason, 'min-stay');
+  assert.match(oneWeekendNight.error ?? '', /minimum stay/i);
+
+  // 2026-08-10/11 are Monday/Tuesday: a pure weeknight stay has no minimum.
+  const oneWeekdayNight = createBooking(overrides, baseRate, '2026-08-10', '2026-08-11', 'Guest', 'booking-4');
+  assert.equal(oneWeekdayNight.ok, true);
+  assert.equal(oneWeekdayNight.updates?.length, 1);
+
+  // Meeting the minimum on a weekend stay succeeds.
+  const twoWeekendNights = createBooking(overrides, baseRate, '2026-08-07', '2026-08-09', 'Guest', 'booking-5');
+  assert.equal(twoWeekendNights.ok, true);
+  assert.equal(twoWeekendNights.updates?.length, MIN_STAY_NIGHTS);
 });
 
 const feed: ImportReservation[] = [

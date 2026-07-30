@@ -105,9 +105,12 @@ Two rules, applied on top of the base rate:
    resolved at *read time* in `effectiveRate()` (`backend/src/availability.ts`),
    not persisted — a day only gets a row in `day_overrides` when something
    actually happened to it (a manual rate override, a block, a booking).
-2. **Minimum-stay rule** — new bookings created via `POST /bookings` must be
-   at least `MIN_STAY_NIGHTS` (2) nights; a shorter request is rejected with
-   `400` and `reason: "min-stay"` before availability is even checked.
+2. **Minimum-stay rule, weekends only** — a booking created via
+   `POST /bookings` must be at least `MIN_STAY_NIGHTS` (2) nights **if any of
+   its nights fall on a Friday or Saturday**; a pure weeknight stay (e.g. a
+   single Tuesday night) has no minimum. A shorter weekend-including request
+   is rejected with `400` and `reason: "min-stay"` before availability is
+   even checked.
 
 Key decisions:
 
@@ -117,11 +120,14 @@ Key decisions:
   touched. This is why `DayRecord.rate` is `number | null`: `null` means
   "no override, apply the rules"; a real number means "this exact figure,
   full stop." Precedence logic lives entirely in `effectiveRate()`.
-- **The minimum-stay rule only gates new direct bookings, not the channel
-  feed.** A reservation arriving from Channex/an OTA is already a confirmed
-  external booking — rejecting a 1-night OTA reservation for violating a
-  minimum-stay policy the OTA guest never saw would be wrong; `reconcileReservations`
-  deliberately doesn't check it.
+- **The minimum-stay rule only applies when the stay touches a weekend
+  night, and only gates new direct bookings, not the channel feed.** Real
+  minimum-stay policies are almost always a weekend/peak-night thing (protect
+  the Friday/Saturday from a single low-value night), not a blanket rule —
+  a lone Tuesday booking shouldn't be rejected. And a reservation arriving
+  from Channex/an OTA is already a confirmed external booking — rejecting a
+  1-night OTA reservation for violating a policy the OTA guest never saw
+  would be wrong; `reconcileReservations` deliberately doesn't check it.
 - **The displayed rate for an already-booked night is recomputed on every
   read**, not frozen at the moment of booking. There's no invoicing/pricing-
   history concept in this app — only calendar management — so "what would
@@ -144,9 +150,10 @@ Key decisions:
   amber = blocked, with a rate pill per day and a legend explaining the
   weekend surcharge.
 - The minimum-stay rule surfaces the same way a booking conflict does — an
-  inline banner ("Minimum stay is 2 nights (requested 1).") rather than a
-  raw validation error, and the "New booking" card states the minimum up
-  front so it's not a surprise on submit.
+  inline banner ("Minimum stay is 2 nights for stays that include a Fri/Sat
+  night (requested 1).") rather than a raw validation error, and the "New
+  booking" card states the weekend-only minimum up front so it's not a
+  surprise on submit.
 
 ## Key decisions & trade-offs
 

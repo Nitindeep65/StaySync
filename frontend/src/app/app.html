@@ -101,7 +101,7 @@
 
       <div class="card">
         <h3><span class="card-icon">☐</span>New booking</h3>
-        <p class="hint">Minimum stay: {{ minStayNights() }} nights.</p>
+        <p class="hint">Minimum stay: {{ minStayNights() }} nights for stays that include a Fri/Sat night.</p>
         <label class="field">
           <span>Check-in</span>
           <input type="date" [ngModel]="bookingCheckIn()" (ngModelChange)="bookingCheckIn.set($event)" />
