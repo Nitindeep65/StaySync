@@ -317,7 +317,7 @@
   @apply pointer-events-none absolute left-2.5 text-sm leading-none text-slate-400;
 }
 
-.input-with-icon input {
+.input-with-icon:has(.input-icon) input {
   @apply pl-8;
 }
 
