@@ -1,0 +1,7 @@
+[
+  { "id": "1001", "guest": "John D.", "checkIn": "2026-08-10", "checkOut": "2026-08-12" },
+  { "id": "1002", "guest": "Maria S.", "checkIn": "2026-08-15", "checkOut": "2026-08-18" },
+  { "id": "1001", "guest": "John D.", "checkIn": "2026-08-10", "checkOut": "2026-08-12" },
+  { "id": "0999", "guest": "—", "checkIn": "2026-08-01", "checkOut": "2026-08-03", "status": "cancelled" },
+  { "id": "1003", "guest": "Sam P.", "checkIn": "2026-08-13", "checkOut": "2026-08-16" }
+]

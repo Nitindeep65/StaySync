@@ -1,8 +1,8 @@
 export type DayStatus = 'available' | 'booked' | 'blocked';
 
-export interface CalendarDay {
+export interface DayRecord {
   date: string;
-  rate: number;
+  rate: number | null;
   status: DayStatus;
   bookingId?: string;
   bookingGuest?: string;
@@ -19,14 +19,27 @@ export interface ImportReservation {
 export interface BookingResult {
   ok: boolean;
   error?: string;
-  updatedDays?: CalendarDay[];
+  updates?: DayRecord[];
+}
+
+export interface BlockResult {
+  ok: boolean;
+  error?: string;
+  updates?: DayRecord[];
+}
+
+export interface ConflictDetail {
+  id: string;
+  reason: string;
 }
 
 export interface ReconcileResult {
-  imported: number;
-  duplicates: number;
-  cancelled: number;
-  conflicts: number;
+  imported: string[];
+  duplicatesInFeed: string[];
+  alreadyImported: string[];
+  cancelled: string[];
+  conflicts: ConflictDetail[];
+  updates: DayRecord[];
 }
 
 const dayMs = 24 * 60 * 60 * 1000;
@@ -36,120 +49,189 @@ function parseDate(value: string): Date {
   return new Date(Date.UTC(year, month - 1, day));
 }
 
-function getDatesBetweenInclusive(start: string, end: string): string[] {
+function toIso(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/** Inclusive on both ends — used for calendar-cell operations (rates, blocks). */
+export function datesInclusive(start: string, end: string): string[] {
   const startDate = parseDate(start);
   const endDate = parseDate(end);
   const dates: string[] = [];
-  let cursor = startDate;
-  while (cursor <= endDate) {
-    const iso = cursor.toISOString().slice(0, 10);
-    dates.push(iso);
-    cursor = new Date(cursor.getTime() + dayMs);
+  for (let cursor = startDate; cursor <= endDate; cursor = new Date(cursor.getTime() + dayMs)) {
+    dates.push(toIso(cursor));
   }
   return dates;
 }
 
-function getDatesBetweenExclusive(start: string, end: string): string[] {
-  const startDate = parseDate(start);
-  const endDate = parseDate(end);
+/** checkOut is exclusive — the industry convention for stays (checkIn .. checkOut - 1 night). */
+export function nightsOfStay(checkIn: string, checkOut: string): string[] {
+  const startDate = parseDate(checkIn);
+  const endDate = parseDate(checkOut);
   const dates: string[] = [];
-  let cursor = startDate;
-  while (cursor < endDate) {
-    const iso = cursor.toISOString().slice(0, 10);
-    dates.push(iso);
-    cursor = new Date(cursor.getTime() + dayMs);
+  for (let cursor = startDate; cursor < endDate; cursor = new Date(cursor.getTime() + dayMs)) {
+    dates.push(toIso(cursor));
   }
   return dates;
 }
 
-export function createBooking(days: CalendarDay[], start: string, end: string, guest: string): BookingResult {
-  const targetDates = getDatesBetweenInclusive(start, end);
-  const overlaps = targetDates.some((date) => {
-    const day = days.find((entry) => entry.date === date);
-    return !day || day.status !== 'available';
-  });
+function getDay(overrides: Map<string, DayRecord>, baseRate: number, date: string): DayRecord {
+  return overrides.get(date) ?? { date, rate: null, status: 'available' };
+}
 
-  if (overlaps) {
-    return { ok: false, error: 'Booking overlaps with an existing booking or block.' };
+export function effectiveRate(day: DayRecord, baseRate: number): number {
+  return day.rate ?? baseRate;
+}
+
+export function buildCalendarRange(
+  overrides: Map<string, DayRecord>,
+  baseRate: number,
+  start: string,
+  end: string
+): Array<{ date: string; rate: number; status: DayStatus; bookingGuest?: string }> {
+  return datesInclusive(start, end).map((date) => {
+    const day = getDay(overrides, baseRate, date);
+    return {
+      date,
+      rate: effectiveRate(day, baseRate),
+      status: day.status,
+      ...(day.bookingGuest ? { bookingGuest: day.bookingGuest } : {})
+    };
+  });
+}
+
+export function applyRateOverride(
+  overrides: Map<string, DayRecord>,
+  baseRate: number,
+  start: string,
+  end: string,
+  rate: number
+): DayRecord[] {
+  return datesInclusive(start, end).map((date) => {
+    const day = getDay(overrides, baseRate, date);
+    return { ...day, rate };
+  });
+}
+
+export function applyBlockStatus(
+  overrides: Map<string, DayRecord>,
+  baseRate: number,
+  start: string,
+  end: string,
+  blocked: boolean
+): BlockResult {
+  const dates = datesInclusive(start, end);
+
+  if (blocked) {
+    const bookedDates = dates.filter((date) => getDay(overrides, baseRate, date).status === 'booked');
+    if (bookedDates.length > 0) {
+      return { ok: false, error: `Cannot block ${bookedDates[0]}: already booked.` };
+    }
+    const updates = dates.map((date) => ({ ...getDay(overrides, baseRate, date), status: 'blocked' as DayStatus }));
+    return { ok: true, updates };
   }
 
-  const updatedDays = days.map((day) => {
-    if (targetDates.includes(day.date)) {
-      return { ...day, status: 'booked' as DayStatus, bookingGuest: guest, bookingId: `booking-${guest}-${day.date}` };
-    }
-    return day;
-  });
-
-  return { ok: true, updatedDays };
+  // Unblocking only affects currently-blocked days; booked/available days are left untouched.
+  const updates = dates
+    .map((date) => getDay(overrides, baseRate, date))
+    .filter((day) => day.status === 'blocked')
+    .map((day) => ({ ...day, status: 'available' as DayStatus }));
+  return { ok: true, updates };
 }
 
-export function setRateOverride(days: CalendarDay[], start: string, end: string, rate: number): CalendarDay[] {
-  return days.map((day) => {
-    if (getDatesBetweenInclusive(start, end).includes(day.date)) {
-      return { ...day, rate };
-    }
-    return day;
-  });
+export function createBooking(
+  overrides: Map<string, DayRecord>,
+  baseRate: number,
+  checkIn: string,
+  checkOut: string,
+  guest: string,
+  bookingId: string
+): BookingResult {
+  const nights = nightsOfStay(checkIn, checkOut);
+  if (nights.length === 0) {
+    return { ok: false, error: 'checkOut must be after checkIn.' };
+  }
+
+  const unavailable = nights.find((date) => getDay(overrides, baseRate, date).status !== 'available');
+  if (unavailable) {
+    return { ok: false, error: `Booking overlaps with an existing booking or block on ${unavailable}.` };
+  }
+
+  const updates = nights.map((date) => ({
+    ...getDay(overrides, baseRate, date),
+    status: 'booked' as DayStatus,
+    bookingId,
+    bookingGuest: guest
+  }));
+
+  return { ok: true, updates };
 }
 
-export function setBlockStatus(days: CalendarDay[], start: string, end: string, blocked: boolean): CalendarDay[] {
-  return days.map((day) => {
-    if (getDatesBetweenInclusive(start, end).includes(day.date)) {
-      const nextStatus: DayStatus = blocked ? 'blocked' : 'available';
-      return { ...day, status: nextStatus };
-    }
-    return day;
-  });
-}
+/**
+ * Reconciles a channel feed against current calendar state.
+ *
+ * Decisions (see README for full rationale):
+ * - Dedupe by reservation id, first occurrence in the feed wins.
+ * - status: 'cancelled' entries are skipped, never booked.
+ * - Conflicts are checked against both the persisted calendar AND earlier
+ *   reservations already accepted from the same feed (first-come-first-served).
+ * - Reservation ids already imported in a previous call are skipped as
+ *   'alreadyImported' rather than re-processed, so re-running an import is a no-op.
+ */
+export function reconcileReservations(
+  overrides: Map<string, DayRecord>,
+  baseRate: number,
+  alreadyImportedIds: Set<string>,
+  reservations: ImportReservation[]
+): ReconcileResult {
+  const seenInFeed = new Set<string>();
+  const duplicatesInFeed: string[] = [];
+  const cancelled: string[] = [];
+  const alreadyImported: string[] = [];
+  const conflicts: ConflictDetail[] = [];
+  const imported: string[] = [];
+  const updates: DayRecord[] = [];
 
-export function reconcileReservations(days: CalendarDay[], reservations: ImportReservation[]): ReconcileResult {
-  const seen = new Set<string>();
-  const duplicates = new Set<string>();
-  const imported: ImportReservation[] = [];
+  // Working copy so nights booked earlier in this same batch count toward later conflict checks.
+  const working = new Map(overrides);
 
   for (const reservation of reservations) {
     if (reservation.status === 'cancelled') {
+      cancelled.push(reservation.id);
       continue;
     }
-    if (seen.has(reservation.id)) {
-      duplicates.add(reservation.id);
+
+    if (seenInFeed.has(reservation.id)) {
+      duplicatesInFeed.push(reservation.id);
       continue;
     }
-    seen.add(reservation.id);
-    imported.push(reservation);
+    seenInFeed.add(reservation.id);
+
+    if (alreadyImportedIds.has(reservation.id)) {
+      alreadyImported.push(reservation.id);
+      continue;
+    }
+
+    const nights = nightsOfStay(reservation.checkIn, reservation.checkOut);
+    const conflictDate = nights.find((date) => getDay(working, baseRate, date).status !== 'available');
+    if (conflictDate) {
+      conflicts.push({ id: reservation.id, reason: `night ${conflictDate} already booked or blocked` });
+      continue;
+    }
+
+    for (const date of nights) {
+      const day = getDay(working, baseRate, date);
+      const updated: DayRecord = {
+        ...day,
+        status: 'booked',
+        bookingId: reservation.id,
+        bookingGuest: reservation.guest
+      };
+      working.set(date, updated);
+      updates.push(updated);
+    }
+    imported.push(reservation.id);
   }
 
-  const conflictIds = new Set<string>();
-  const nextDays = [...days];
-
-  for (const reservation of imported) {
-    const targetDates = getDatesBetweenExclusive(reservation.checkIn, reservation.checkOut);
-    const conflict = targetDates.some((date) => {
-      const day = nextDays.find((entry) => entry.date === date);
-      return day?.status === 'booked' || day?.status === 'blocked';
-    });
-
-    if (conflict) {
-      conflictIds.add(reservation.id);
-      continue;
-    }
-
-    for (const date of targetDates) {
-      const existing = nextDays.find((entry) => entry.date === date);
-      if (existing) {
-        existing.status = 'booked';
-        existing.bookingId = reservation.id;
-        existing.bookingGuest = reservation.guest;
-      } else {
-        nextDays.push({ date, rate: 120, status: 'booked', bookingId: reservation.id, bookingGuest: reservation.guest });
-      }
-    }
-  }
-
-  return {
-    imported: imported.length - conflictIds.size,
-    duplicates: duplicates.size,
-    cancelled: reservations.filter((reservation) => reservation.status === 'cancelled').length,
-    conflicts: conflictIds.size
-  };
+  return { imported, duplicatesInFeed, alreadyImported, cancelled, conflicts, updates };
 }

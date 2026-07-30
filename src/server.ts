@@ -1,60 +1,119 @@
 import express from 'express';
 import cors from 'cors';
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { createBooking, setRateOverride, setBlockStatus, reconcileReservations, type CalendarDay, type ImportReservation } from './availability';
+import { randomUUID } from 'node:crypto';
+import {
+  applyBlockStatus,
+  applyRateOverride,
+  buildCalendarRange,
+  createBooking,
+  reconcileReservations,
+  type ImportReservation
+} from './availability';
+import { CalendarStore } from './store';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const baseRate = 120;
-const initialDays: CalendarDay[] = Array.from({ length: 31 }, (_, index) => {
-  const date = new Date(Date.UTC(2026, 7, 1 + index));
-  return { date: date.toISOString().slice(0, 10), rate: baseRate, status: 'available' };
-});
+const dbPath = process.env.DB_PATH || path.join(__dirname, '..', '..', 'data', 'staysync.db');
+const store = new CalendarStore(dbPath);
 
-let calendar = [...initialDays];
+function isValidDate(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
-app.get('/calendar', (_req, res) => {
-  res.json(calendar);
+app.get('/property', (_req, res) => {
+  res.json(store.getProperty());
+});
+
+app.get('/calendar', (req, res) => {
+  const { start, end } = req.query as { start?: string; end?: string };
+  if (!isValidDate(start) || !isValidDate(end)) {
+    return res.status(400).json({ error: 'start and end query params are required as YYYY-MM-DD.' });
+  }
+  if (start > end) {
+    return res.status(400).json({ error: 'start must not be after end.' });
+  }
+  const { baseRate } = store.getProperty();
+  const overrides = store.getAllOverrides();
+  return res.json(buildCalendarRange(overrides, baseRate, start, end));
 });
 
 app.post('/rate', (req, res) => {
   const { start, end, rate } = req.body as { start: string; end: string; rate: number };
-  calendar = setRateOverride(calendar, start, end, rate);
-  res.json(calendar);
+  if (!isValidDate(start) || !isValidDate(end) || typeof rate !== 'number' || rate <= 0) {
+    return res.status(400).json({ error: 'start, end (YYYY-MM-DD) and a positive rate are required.' });
+  }
+  const { baseRate } = store.getProperty();
+  const overrides = store.getAllOverrides();
+  const updates = applyRateOverride(overrides, baseRate, start, end, rate);
+  store.saveOverrides(updates);
+  return res.json(buildCalendarRange(store.getAllOverrides(), baseRate, start, end));
 });
 
 app.post('/block', (req, res) => {
   const { start, end, blocked } = req.body as { start: string; end: string; blocked: boolean };
-  calendar = setBlockStatus(calendar, start, end, blocked);
-  res.json(calendar);
-});
-
-app.post('/bookings', (req, res) => {
-  const { start, end, guest } = req.body as { start: string; end: string; guest: string };
-  const result = createBooking(calendar, start, end, guest);
+  if (!isValidDate(start) || !isValidDate(end) || typeof blocked !== 'boolean') {
+    return res.status(400).json({ error: 'start, end (YYYY-MM-DD) and a boolean blocked are required.' });
+  }
+  const { baseRate } = store.getProperty();
+  const overrides = store.getAllOverrides();
+  const result = applyBlockStatus(overrides, baseRate, start, end, blocked);
   if (!result.ok) {
     return res.status(409).json({ error: result.error });
   }
-  calendar = result.updatedDays ?? calendar;
-  return res.json(calendar);
+  store.saveOverrides(result.updates ?? []);
+  return res.json(buildCalendarRange(store.getAllOverrides(), baseRate, start, end));
+});
+
+app.post('/bookings', (req, res) => {
+  const { checkIn, checkOut, guest } = req.body as { checkIn: string; checkOut: string; guest: string };
+  if (!isValidDate(checkIn) || !isValidDate(checkOut) || !guest) {
+    return res.status(400).json({ error: 'checkIn, checkOut (YYYY-MM-DD) and guest are required.' });
+  }
+  const { baseRate } = store.getProperty();
+  const overrides = store.getAllOverrides();
+  const bookingId = randomUUID();
+  const result = createBooking(overrides, baseRate, checkIn, checkOut, guest, bookingId);
+  if (!result.ok) {
+    return res.status(409).json({ error: result.error });
+  }
+  store.saveOverrides(result.updates ?? []);
+  return res.status(201).json({ bookingId, days: buildCalendarRange(store.getAllOverrides(), baseRate, checkIn, checkOut) });
 });
 
 app.post('/import', (req, res) => {
   const reservations = req.body as ImportReservation[];
-  const result = reconcileReservations(calendar, reservations);
-  res.json({ result, calendar });
-});
+  if (!Array.isArray(reservations)) {
+    return res.status(400).json({ error: 'Request body must be an array of reservations.' });
+  }
+  const { baseRate } = store.getProperty();
+  const overrides = store.getAllOverrides();
+  const alreadyImportedIds = store.getImportedIds();
 
-app.get('/', (_req, res) => {
-  res.send(readFileSync(path.join(__dirname, '..', '..', 'public', 'index.html'), 'utf8'));
-});
+  const result = reconcileReservations(overrides, baseRate, alreadyImportedIds, reservations);
 
-app.use(express.static(path.join(__dirname, '..', '..', 'public')));
+  store.saveOverrides(result.updates);
+  store.recordImported(
+    result.imported.map((id) => {
+      const reservation = reservations.find((entry) => entry.id === id)!;
+      return { id, checkIn: reservation.checkIn, checkOut: reservation.checkOut, guest: reservation.guest };
+    })
+  );
+
+  return res.json({
+    summary: {
+      imported: result.imported,
+      duplicatesInFeed: result.duplicatesInFeed,
+      alreadyImported: result.alreadyImported,
+      cancelled: result.cancelled,
+      conflicts: result.conflicts
+    }
+  });
+});
 
 const port = Number(process.env.PORT || 3100);
 app.listen(port, '127.0.0.1', () => {
