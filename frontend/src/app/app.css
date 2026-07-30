@@ -178,6 +178,31 @@
   @apply max-w-full truncate text-[0.62rem] font-semibold text-red-900;
 }
 
+/* Bookings list, directly under the calendar grid */
+.booking-list {
+  @apply mt-4 border-t border-gray-200 pt-4;
+}
+
+.booking-list-title {
+  @apply mb-2 text-sm font-semibold text-slate-900;
+}
+
+.booking-row {
+  @apply mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm last:mb-0;
+}
+
+.booking-guest {
+  @apply font-semibold text-red-900;
+}
+
+.booking-dates {
+  @apply text-xs text-slate-600 tabular-nums;
+}
+
+.booking-nights {
+  @apply rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700;
+}
+
 /* Sidebar */
 .controls {
   @apply flex flex-col gap-5;

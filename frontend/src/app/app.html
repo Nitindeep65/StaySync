@@ -63,6 +63,21 @@
           }
         </div>
       }
+
+      <div class="booking-list">
+        <h3 class="booking-list-title">Bookings this month</h3>
+        @if (bookingsThisMonth().length === 0) {
+          <p class="hint">No bookings this month.</p>
+        } @else {
+          @for (b of bookingsThisMonth(); track b.bookingId) {
+            <div class="booking-row">
+              <span class="booking-guest">{{ b.guest }}</span>
+              <span class="booking-dates">{{ b.checkIn }} → {{ b.checkOut }}</span>
+              <span class="booking-nights">{{ b.nights }} night{{ b.nights === 1 ? '' : 's' }}</span>
+            </div>
+          }
+        }
+      </div>
     </section>
 
     <aside class="controls">

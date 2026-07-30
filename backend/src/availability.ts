@@ -112,13 +112,14 @@ export function buildCalendarRange(
   baseRate: number,
   start: string,
   end: string
-): Array<{ date: string; rate: number; status: DayStatus; bookingGuest?: string }> {
+): Array<{ date: string; rate: number; status: DayStatus; bookingId?: string; bookingGuest?: string }> {
   return datesInclusive(start, end).map((date) => {
     const day = getDay(overrides, baseRate, date);
     return {
       date,
       rate: effectiveRate(day, baseRate),
       status: day.status,
+      ...(day.bookingId ? { bookingId: day.bookingId } : {}),
       ...(day.bookingGuest ? { bookingGuest: day.bookingGuest } : {})
     };
   });

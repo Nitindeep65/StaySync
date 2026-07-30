@@ -9,6 +9,14 @@ interface DayCell {
   day?: CalendarDay;
 }
 
+interface BookingSummary {
+  bookingId: string;
+  guest: string;
+  checkIn: string;
+  checkOut: string;
+  nights: number;
+}
+
 interface StatusMessage {
   kind: 'error' | 'success' | 'info';
   text: string;
@@ -75,6 +83,46 @@ export class App implements OnInit {
     const weeks: DayCell[][] = [];
     for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
     return weeks;
+  });
+
+  /**
+   * Groups consecutive booked nights sharing a bookingId into one row, so
+   * the sidebar list reads "Guest, checkIn → checkOut" instead of one line
+   * per night. Scoped to the currently-loaded month's range.
+   */
+  protected readonly bookingsThisMonth = computed<BookingSummary[]>(() => {
+    const map = this.daysByDate();
+    const dates = [...map.keys()].sort();
+    const result: BookingSummary[] = [];
+    let current: { bookingId: string; guest: string; checkIn: string; lastDate: string } | null = null;
+
+    const flush = () => {
+      if (!current) return;
+      const checkOut = toIso(new Date(parseIso(current.lastDate).getTime() + 86400000));
+      const nights = Math.round((parseIso(checkOut).getTime() - parseIso(current.checkIn).getTime()) / 86400000);
+      result.push({ bookingId: current.bookingId, guest: current.guest, checkIn: current.checkIn, checkOut, nights });
+      current = null;
+    };
+
+    for (const date of dates) {
+      const day = map.get(date)!;
+      const isBooked = day.status === 'booked' && day.bookingId;
+      if (isBooked) {
+        const isContinuation =
+          current && current.bookingId === day.bookingId && toIso(new Date(parseIso(current.lastDate).getTime() + 86400000)) === date;
+        if (isContinuation) {
+          current!.lastDate = date;
+        } else {
+          flush();
+          current = { bookingId: day.bookingId!, guest: day.bookingGuest ?? 'Guest', checkIn: date, lastDate: date };
+        }
+      } else {
+        flush();
+      }
+    }
+    flush();
+
+    return result.sort((a, b) => a.checkIn.localeCompare(b.checkIn));
   });
 
   protected rangeStart = signal<string | null>(null);

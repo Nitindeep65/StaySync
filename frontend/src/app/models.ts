@@ -4,6 +4,7 @@ export interface CalendarDay {
   date: string;
   rate: number;
   status: DayStatus;
+  bookingId?: string;
   bookingGuest?: string;
 }
 
