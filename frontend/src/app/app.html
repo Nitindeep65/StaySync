@@ -15,7 +15,7 @@
 
   @if (status(); as s) {
     <div class="banner" [class.error]="s.kind === 'error'" [class.success]="s.kind === 'success'">
-      <span class="text-base leading-none">{{ s.kind === 'error' ? '⚠' : '✓' }}</span>
+      <span class="text-base leading-none">{{ s.kind === 'error' ? '⚠' : s.kind === 'success' ? '✓' : 'ⓘ' }}</span>
       <span class="banner-text">{{ s.text }}</span>
       <button type="button" class="banner-close" aria-label="Dismiss" (click)="dismissStatus()">✕</button>
     </div>

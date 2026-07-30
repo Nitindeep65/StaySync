@@ -155,7 +155,23 @@ export class App implements OnInit {
       },
       error: () => {}
     });
-    this.loadMonth();
+
+    // The backend is on Render's free tier, which sleeps after inactivity —
+    // a cold start can take up to ~50s. Only worth mentioning if the first
+    // load is actually slow, so this only fires if it's still pending.
+    const wakeupTimer = setTimeout(() => {
+      this.status.set({
+        kind: 'info',
+        text: "Waking up the backend — it's hosted on Render's free tier, which sleeps when idle. This can take up to a minute on the first request."
+      });
+    }, 2500);
+
+    this.loadMonth(() => {
+      clearTimeout(wakeupTimer);
+      if (this.status()?.kind === 'info') {
+        this.status.set(null);
+      }
+    });
   }
 
   private monthBounds(): { start: string; end: string } {
@@ -166,17 +182,19 @@ export class App implements OnInit {
     return { start, end };
   }
 
-  protected loadMonth(): void {
+  protected loadMonth(onSettled?: () => void): void {
     const { start, end } = this.monthBounds();
     this.loading.set(true);
     this.api.getCalendar(start, end).subscribe({
       next: (days) => {
         this.daysByDate.set(new Map(days.map((d) => [d.date, d])));
         this.loading.set(false);
+        onSettled?.();
       },
       error: (err: ApiError) => {
         this.setError(err.message);
         this.loading.set(false);
+        onSettled?.();
       }
     });
   }
