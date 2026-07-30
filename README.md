@@ -1,250 +1,87 @@
 # StaySync — availability & pricing manager
 
-This app manages the booking calendar for one holiday rental (Seaside
-Cottage, £120/night base rate). You can look at rates and availability,
-change rates, block or unblock dates, take bookings, cancel bookings, and
-import a mock "channel feed" of reservations (like you'd get from Airbnb or
-Booking.com) — all without ever double-booking a night.
+Live: **https://stay-sync-eta.vercel.app**
 
-- **`backend/`**: the API. Node.js + TypeScript + Express, with data saved
-  in a SQLite file (via `better-sqlite3`).
-- **`frontend/`**: the web page. Angular (standalone components + signals).
+A booking calendar for a single holiday rental (Seaside Cottage,
+£120/night base rate). View rates & availability, override rates,
+block/unblock dates, create/cancel bookings, and reconcile a mock channel
+feed — all without double-booking.
 
-Backend and frontend are two separate projects — each has its own
-`package.json` and `node_modules`, and each runs as its own process. They
-only talk to each other over plain HTTP.
+- `backend/` — Node.js + TypeScript + Express, SQLite (`better-sqlite3`)
+- `frontend/` — Angular (standalone components + signals)
 
-## How to run it
+Two independent projects (separate `package.json`/`node_modules`),
+talking only over HTTP.
 
-You need two terminals: one for the API, one for the web page.
+## Run locally
 
-**1. Backend** (`backend/`)
 ```
-cd backend
-npm install
-npm run build
-npm start
+cd backend && npm install && npm run build && npm start   # http://127.0.0.1:3100/api
 ```
-This starts the API at `http://127.0.0.1:3100`, with every route under
-`/api` (e.g. `http://127.0.0.1:3100/api/property`). It saves data to
-`backend/data/staysync.db`, which is created automatically the first time
-(you can point it somewhere else with the `DB_PATH` environment variable).
-
-**2. Frontend** (`frontend/`)
 ```
-cd frontend
-npm install
-npm start
-```
-This opens the app at `http://localhost:4200`. It talks straight to
-`http://127.0.0.1:3100/api` — no proxy setup needed, since the API allows
-cross-origin requests (CORS) from the browser.
-
-**Running the tests**
-```
-cd backend && npm test   # tests the booking/pricing/import logic
-cd frontend && npm test  # a basic test that the app component renders
+cd frontend && npm install && npm start                   # http://localhost:4200
 ```
 
-## The API
+Data persists to `backend/data/staysync.db` (override with `DB_PATH`).
 
-There's only one property, so URLs don't need a property id. Every date is
-written as `YYYY-MM-DD`. Every route below lives under `/api` (e.g.
-`GET /api/property`) — this keeps local dev and the deployed site (see
-"Deployment" below) working the exact same way.
+**Tests**
+```
+cd backend && npm test    # booking/pricing/import logic
+cd frontend && npm test
+```
 
-| Endpoint | What you send | What it does |
+## API
+
+All dates `YYYY-MM-DD`. Every route is under `/api`.
+
+| Endpoint | Body | Notes |
 |---|---|---|
-| `GET /api/property` | — | Returns the property name, base rate, and the current pricing rules (weekend surcharge %, minimum-stay nights) |
-| `GET /api/calendar?start=&end=` | — | Returns every day in that range (inclusive) with its rate, status, and guest name if booked. The rate already includes any weekend surcharge or manual override. |
-| `POST /api/rate` | `{start, end, rate}` | Sets a specific rate for every day in that range (inclusive) |
-| `POST /api/block` | `{start, end, blocked}` | Blocks or unblocks every day in that range (inclusive). Refuses to block a day that's already booked (returns 409). |
-| `POST /api/bookings` | `{checkIn, checkOut, guest}` | Creates a booking. `checkOut` is exclusive (see below). Rejects a stay that's too short (400) or clashes with an existing booking/block (409). |
-| `DELETE /api/bookings/:bookingId` | — | Cancels a booking and frees its nights back to available. Returns 404 if that booking id doesn't exist. |
-| `POST /api/import` | a list of reservations | Reconciles a channel feed into the calendar (explained below). `checkOut` is exclusive here too. |
+| `GET /api/property` | — | base rate + pricing rules |
+| `GET /api/calendar?start=&end=` | — | inclusive range |
+| `POST /api/rate` | `{start, end, rate}` | inclusive range |
+| `POST /api/block` | `{start, end, blocked}` | inclusive; 409 if already booked |
+| `POST /api/bookings` | `{checkIn, checkOut, guest}` | checkOut exclusive; 400 min-stay, 409 overlap |
+| `DELETE /api/bookings/:id` | — | frees nights; 404 if unknown |
+| `POST /api/import` | reservation[] | checkOut exclusive |
 
-**Why "inclusive" for some endpoints and "exclusive" for others?** `rate`
-and `block` work on specific calendar cells — "set these exact days" — so
-the range includes both the start and end day. Bookings work differently:
-they follow the normal hotel rule where `checkOut` is the day you leave, not
-a night you pay for. So a stay from the 10th to the 12th only books the
-nights of the 10th and 11th — you could have a new guest check in on the
-12th, same day. This matches how a real booking site works, and it's the
-same rule for both a manual booking and an imported one.
+`rate`/`block` are inclusive (they set specific calendar cells).
+`bookings`/`import` use exclusive checkout, matching hotel convention
+(check-out day isn't a booked night) — same rule for manual and
+imported bookings.
 
-### How data is stored
+## Key features
 
-Most days have nothing special about them, so we don't store a row for
-every single day. There's one table, `day_overrides`, that only has a row
-for a day once something happens to it — a rate change, a block, or a
-booking. Any day with no row is just "available, at the normal base rate."
-
-A second table, `imported_reservations`, keeps a list of every channel-feed
-reservation id we've already processed. That way, if you run the same
-import twice, the second run does nothing new — it recognizes the ids it's
-already seen.
-
-## How the channel-feed import works
-
-When you import a list of reservations, each one is handled in this order:
-
-1. **Cancelled** reservations are skipped straight away — never booked.
-2. **Duplicates**: if the same reservation id shows up twice in the same
-   feed, only the first one counts. The rest are reported separately.
-3. **Already imported**: if we've already processed this id in an earlier
-   import, we skip it again and report it as "already imported" — not as a
-   conflict. This is what makes re-running an import safe.
-4. **Conflicts**: everything left over is checked against the existing
-   calendar *and* against reservations already accepted earlier in the same
-   batch. Whoever claims a night first, in feed order, gets it — anyone
-   trying to claim an already-taken night is rejected and listed as a
-   conflict, with a reason.
-
-The sample file `reservations.json` shows all four cases at once: one
-reservation id appears twice (a duplicate), one is marked cancelled, and two
-different bookings genuinely overlap on the same night — a real conflict,
-not a made-up one, so the test suite actually exercises it.
-
-## Bonus feature: dynamic pricing
-
-Two extra pricing rules sit on top of the base rate:
-
-1. **Weekend surcharge** — Friday and Saturday nights cost 25% more than
-   the base rate (rounded to a whole number). This isn't stored anywhere;
-   it's calculated fresh every time you read the calendar, in a function
-   called `effectiveRate()`. A day only gets a database row when something
-   is actually done to it.
-2. **Minimum 2-night stay, but only for weekends** — a booking that
-   includes a Friday or Saturday night must be at least 2 nights. A booking
-   for a single weeknight (say, just a Tuesday) has no minimum at all.
-
-A few choices worth explaining:
-
-- **A manual rate override always beats the weekend surcharge.** If you've
-  set a specific price for a Saturday, that's the price shown and charged —
-  the weekend rule only fills in days nobody has touched.
-- **The minimum-stay rule only applies to bookings made directly in this
-  app, not to imported reservations.** A reservation coming from an OTA
-  (like Airbnb) is already a confirmed booking made under that OTA's own
-  rules — it wouldn't be fair to reject it here for breaking a policy the
-  guest never even saw.
-- **The price shown for an already-booked night updates over time**, rather
-  than being frozen at the moment it was booked. This app only manages the
-  calendar, not invoices, so it always shows "what this night would cost
-  today."
-- `GET /property` returns both pricing numbers (the surcharge percentage
-  and the minimum nights) so the app can display them instead of having the
-  same numbers hardcoded in two places.
-
-## Notes on the interface
-
-- The calendar looks like a real month (correct weekday columns), with
-  buttons to move to the previous/next month.
-- To set a rate or block dates, click a day to start a range, then click
-  another day to finish it.
-- If a booking fails (say, the dates clash), you see a friendly message on
-  the page — never a raw browser pop-up or a crash.
-- Day colours: green = available, red = booked (shows the guest's name),
-  amber = blocked. Each day also shows its price, and there's a legend
-  explaining the weekend surcharge.
-- The minimum-stay rule shows the same kind of friendly message as a
-  booking clash, and the "New booking" form explains the rule up front so
-  it's not a surprise.
-- Every booking in the current month is also listed below the calendar
-  (guest, dates, number of nights), with a **Cancel** button per booking
-  (asks for confirmation first) so you don't have to hunt through the grid
-  to find and undo one.
-- On the deployed site, if the backend's Render free-tier instance has spun
-  down from inactivity, the first load can take up to ~50s. Rather than
-  show nothing, a banner appears after a couple of seconds explaining
-  that it's waking up, and clears itself the moment data arrives — it
-  never shows at all if the backend was already warm.
+- **Weekend surcharge**: Fri/Sat nights +25%, unless a manual rate
+  override is set (override always wins).
+- **Minimum 2-night stay** for direct bookings that include a Fri/Sat
+  night — a pure weeknight stay has no minimum. Doesn't apply to the
+  imported feed (an OTA booking is already confirmed under its own rules).
+- **Channel-feed import** is idempotent: duplicates within a feed,
+  cancelled entries, already-imported ids, and real conflicts (checked
+  against the calendar *and* the rest of the batch) are each handled and
+  reported separately.
+- **Cold-start notice**: a banner appears if the Render backend is slow
+  to wake from idle, and clears itself once data loads.
 
 ## Deployment
 
-Live at **https://stay-sync-eta.vercel.app**.
+Frontend on Vercel, backend on Render — not one platform, because
+Vercel's combined frontend+backend "services" beta has a real bug for
+this repo's layout (subdirectory root + compiled `dist/` output): it
+splits a service's code and its own `node_modules` into directories that
+aren't ancestors of each other, so the deployed function can never find
+its dependencies. Confirmed by deploying and reading the file mapping it
+produced. `vercel.json` proxies `/api/*` to the Render service instead.
 
-The frontend is on Vercel (`vercel.json` at the repo root, built with the
-Angular framework preset) and the backend is a separate web service on
-Render (a plain long-running Node process, not a serverless function). A
-rewrite in `vercel.json` sends anything under `/api/*` to the Render
-service's URL, so a visitor's browser only ever talks to one domain — the
-frontend still calls a relative `/api` path (see
-`frontend/src/environments/`), it's just proxied through instead of being
-served from the same box.
+SQLite on Render's free tier has no persistent disk — data can be wiped
+on redeploy or after an idle spin-down. Fine for a demo; production would
+want a hosted database.
 
-Why two platforms instead of one: Vercel also has a newer feature for
-deploying a frontend and backend together as one project (the `services`
-key you'll still see referenced in git history). It turned out to have a
-real bug — for a backend with both a subdirectory root and a compiled
-`dist/` output (exactly this repo's layout), it deploys the backend's code
-in one directory and its own `node_modules` in another, so the deployed
-function can never find its own dependencies (`Cannot find module
-'express'`, despite it being right there in `package.json`). Confirmed by
-actually deploying and reading the file mapping Vercel produced, with two
-different entrypoint configurations hitting the identical bug. Rather than
-wait on a beta feature, the backend now runs on Render, which has no such
-constraint for an ordinary Express app.
+## Left out / next steps
 
-One real limitation either way: the backend's SQLite file isn't on
-persistent storage — Render's free tier doesn't include a persistent disk,
-so data can be wiped when the service redeploys or spins back up after
-being idle. Fine for demoing the app; a real production deployment would
-want a hosted database (Postgres, Turso, etc.) instead of a local SQLite
-file.
+Left out: auth, multi-property support, editing a booking in place
+(cancel + rebook instead), the iCal feed format.
 
-## Key decisions and trade-offs
-
-- **SQLite instead of Postgres/Mongo**: nothing to install or configure —
-  it's just a file, so anyone can run this project immediately. The
-  trade-off shows up in the Deployment section above (no persistent disk
-  on Render's free tier).
-- **Only storing days that changed, not every day**: keeps the database
-  small and avoids pre-filling years of rows. The trade-off is that reading
-  a calendar range has to scan the whole overrides table rather than using
-  an index — perfectly fine at this size (one property, a few years of
-  days at most), but would need a different approach for many properties.
-- **No login system, one property only**: this was out of scope for the
-  task. The database is still shaped so adding more properties later would
-  just mean adding a `property_id` column, not rebuilding everything.
-- **The frontend's API base URL is environment-aware, not a build proxy**:
-  in local dev it's a full address (`http://127.0.0.1:3100/api`); in the
-  production build it's swapped for a relative `/api` at build time (via
-  `frontend/src/environments/` + Angular's `fileReplacements`), which is
-  what lets Vercel's rewrite transparently proxy it to the Render backend
-  without the frontend code needing to know where it's deployed.
-
-## What I deliberately left out
-
-- User accounts/login, and managing more than one property.
-- Editing an existing booking's dates (you can cancel and rebook, but not
-  change a booking in place).
-- The calendar-file (`.ics`) version of the channel feed — only the JSON
-  version is supported.
-- The other bonus-feature options (mobile support, a bigger test suite,
-  login system) — the task only asked for one bonus feature. I picked
-  dynamic pricing because it uses the same kind of thinking as the import
-  logic (rules layered on top of plain data). Deployment happened
-  separately afterwards, not as the chosen stretch goal.
-- A seasonal price multiplier (a second pricing idea from the brief) — the
-  weekend surcharge and minimum-stay rule already show the same pattern,
-  and a third rule would mostly add complexity about which rule wins,
-  without demonstrating anything new.
-
-## What I'd do with more time
-
-- Swap the local SQLite file for a real hosted database (e.g. Postgres,
-  Turso), so data survives a Render redeploy or an idle spin-down instead
-  of living on ephemeral storage.
-- Attach a persistent disk on Render (a paid-tier feature) as a lighter
-  interim fix, short of a full database migration.
-- Make the calendar-range lookup faster (an indexed query) once the
-  overrides table got large enough for it to matter.
-- Add tests that go through the actual HTTP routes, not just the logic
-  underneath — right now the routes are thin and the logic in
-  `backend/src/availability.ts` is what's tested directly. A route-level
-  test suite would also check status codes and input validation.
-- A seasonal multiplier and a small table explaining which pricing rule
-  wins when more than one applies, if a third rule got added — right now
-  "manual override beats the weekend rule" is the only such decision, and
-  it's simple enough to explain in a code comment.
+Next: a real hosted database instead of local SQLite, an indexed
+calendar-range query, and HTTP-route-level tests on top of the existing
+business-logic tests.
