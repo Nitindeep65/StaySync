@@ -192,7 +192,7 @@
 }
 
 .dot-available {
-  background: #d1d5db;
+  background: var(--color-success);
 }
 
 .dot-booked {
@@ -224,6 +224,11 @@
   padding-bottom: 4px;
 }
 
+.weekday:first-child,
+.weekday:last-child {
+  color: var(--color-primary);
+}
+
 .week-row {
   margin-bottom: 6px;
 }
@@ -237,11 +242,12 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
   padding: 4px 2px;
   cursor: pointer;
   font-size: 0.7rem;
   color: var(--color-text);
+  position: relative;
   transition: transform 0.08s ease, box-shadow 0.08s ease, border-color 0.08s ease;
 }
 
@@ -249,6 +255,7 @@
   border-color: var(--color-primary);
   transform: translateY(-1px);
   box-shadow: 0 2px 6px rgba(37, 99, 235, 0.15);
+  z-index: 1;
 }
 
 .day-cell.out-of-month {
@@ -257,7 +264,13 @@
 }
 
 .day-cell.status-available {
-  background: var(--color-surface);
+  background: var(--color-available-bg);
+  border-color: var(--color-available-border);
+}
+
+.day-cell.status-available:not(:disabled):hover {
+  border-color: var(--color-success);
+  box-shadow: 0 2px 6px rgba(5, 150, 105, 0.18);
 }
 
 .day-cell.status-booked {
@@ -273,28 +286,50 @@
 .day-cell.selected {
   outline: 2px solid var(--color-primary);
   outline-offset: -2px;
-  background: #eff6ff;
+  background: #dbeafe;
+  border-color: var(--color-primary);
 }
 
 .day-number {
   font-weight: 600;
   font-size: 0.85rem;
+  line-height: 1;
 }
 
 .day-rate {
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
+  font-size: 0.65rem;
+  background: rgba(17, 24, 39, 0.05);
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.status-available .day-rate {
+  color: var(--color-available-text);
+  background: rgba(5, 122, 73, 0.1);
+}
+
+.status-booked .day-rate {
+  color: #991b1b;
+  background: rgba(153, 27, 27, 0.08);
+}
+
+.status-blocked .day-rate {
+  color: #92400e;
+  background: rgba(146, 64, 14, 0.1);
 }
 
 .day-guest {
   font-size: 0.62rem;
   color: #7f1d1d;
-  font-weight: 500;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
 }
+
 
 .controls {
   display: flex;
@@ -308,6 +343,11 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
   padding: 20px;
+  transition: box-shadow 0.15s ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-card-hover);
 }
 
 .card h3 {
@@ -330,6 +370,17 @@
   color: var(--color-primary);
   font-size: 0.75rem;
   font-weight: 700;
+  flex-shrink: 0;
+}
+
+.card-icon.icon-success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.card-icon.icon-amber {
+  background: var(--color-blocked-bg);
+  color: #92400e;
 }
 
 .hint {

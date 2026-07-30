@@ -66,7 +66,7 @@
 
     <aside class="controls">
       <div class="card">
-        <h3><span class="card-icon">£</span>Rate &amp; availability</h3>
+        <h3><span class="card-icon icon-success">£</span>Rate &amp; availability</h3>
         <p class="hint">{{ rangeLabel() }}</p>
         @if (rangeStart()) {
           <button type="button" class="link-btn" (click)="clearSelection()">Clear selection</button>
@@ -101,7 +101,7 @@
       </div>
 
       <div class="card">
-        <h3><span class="card-icon">⇄</span>Channel feed</h3>
+        <h3><span class="card-icon icon-amber">⇄</span>Channel feed</h3>
         <p class="hint">Imports the bundled mock reservation feed and reconciles it into the calendar.</p>
         <button type="button" class="btn-secondary btn-block" (click)="importMockFeed()">Import mock feed</button>
 

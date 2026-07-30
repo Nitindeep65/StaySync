@@ -187,6 +187,7 @@ export class App implements OnInit {
     this.api.setRate(start, end!, this.rateValue()).subscribe({
       next: () => {
         this.setSuccess(`Rate set to £${this.rateValue()} for ${start} – ${end}.`);
+        this.clearSelection();
         this.loadMonth();
       },
       error: (err: ApiError) => this.setError(err.message)
@@ -203,6 +204,7 @@ export class App implements OnInit {
     this.api.setBlock(start, end!, blocked).subscribe({
       next: () => {
         this.setSuccess(`${blocked ? 'Blocked' : 'Unblocked'} ${start} – ${end}.`);
+        this.clearSelection();
         this.loadMonth();
       },
       error: (err: ApiError) => this.setError(err.message)
