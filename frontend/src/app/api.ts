@@ -43,6 +43,12 @@ export class Api {
       .post<{ summary: ImportSummary }>(`${API_BASE}/import`, reservations)
       .pipe(catchError(toApiError));
   }
+
+  deleteBooking(bookingId: string): Observable<{ ok: boolean }> {
+    return this.http
+      .delete<{ ok: boolean }>(`${API_BASE}/bookings/${encodeURIComponent(bookingId)}`)
+      .pipe(catchError(toApiError));
+  }
 }
 
 function toApiError(err: HttpErrorResponse) {

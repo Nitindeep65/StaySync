@@ -78,6 +78,14 @@
               <span class="booking-guest">{{ b.guest }}</span>
               <span class="booking-dates">{{ b.checkIn }} → {{ b.checkOut }}</span>
               <span class="booking-nights">{{ b.nights }} night{{ b.nights === 1 ? '' : 's' }}</span>
+              <button
+                type="button"
+                class="booking-delete-btn"
+                aria-label="Cancel booking for {{ b.guest }}"
+                (click)="deleteBooking(b)"
+              >
+                Cancel
+              </button>
             </div>
           }
         }
@@ -226,7 +234,7 @@
       <span class="help-step-number">6</span>
       <div>
         <p class="help-step-title">Spotting bookings at a glance</p>
-        <p>The <strong>Bookings this month</strong> list under the calendar grid lists every booking in the visible month — guest, date range, and number of nights — so you don't have to scan every day cell to see who's staying when.</p>
+        <p>The <strong>Bookings this month</strong> list under the calendar grid lists every booking in the visible month — guest, date range, and number of nights — so you don't have to scan every day cell to see who's staying when. Click <strong>Cancel</strong> on a row to delete that booking and free its nights back to available (you'll be asked to confirm first).</p>
       </div>
     </div>
   </div>

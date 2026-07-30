@@ -308,6 +308,18 @@ export class App implements OnInit {
     });
   }
 
+  protected deleteBooking(booking: BookingSummary): void {
+    const confirmed = confirm(`Cancel ${booking.guest}'s booking (${booking.checkIn} → ${booking.checkOut})?`);
+    if (!confirmed) return;
+    this.api.deleteBooking(booking.bookingId).subscribe({
+      next: () => {
+        this.setSuccess(`Cancelled ${booking.guest}'s booking.`);
+        this.loadMonth();
+      },
+      error: (err: ApiError) => this.setError(err.message)
+    });
+  }
+
   protected importMockFeed(): void {
     this.api.importFeed(MOCK_FEED).subscribe({
       next: ({ summary }) => {
