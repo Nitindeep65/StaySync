@@ -155,21 +155,38 @@ A few choices worth explaining:
   (asks for confirmation first) so you don't have to hunt through the grid
   to find and undo one.
 
-## Deploying to Vercel
+## Deployment
 
-`vercel.json` at the repo root deploys this as two services from one
-project: `frontend` (built with the Angular framework preset) and `backend`
-(run as a plain Node service). A rewrite sends anything under `/api/*` to
-the backend and everything else to the frontend, so both are served from
-the same domain — which is also why the frontend calls a relative `/api`
-path in production instead of a hardcoded address (see
-`frontend/src/environments/`).
+Live at **https://stay-sync-eta.vercel.app**.
 
-One real limitation: the backend's SQLite file lives at `/tmp` in that
-environment, which is writable but **not persistent** — data can be wiped
-on a redeploy or when the service restarts after being idle. That's fine
-for demoing the app, but a production deployment would need a real hosted
-database (e.g. Postgres, Turso) instead of a local SQLite file.
+The frontend is on Vercel (`vercel.json` at the repo root, built with the
+Angular framework preset) and the backend is a separate web service on
+Render (a plain long-running Node process, not a serverless function). A
+rewrite in `vercel.json` sends anything under `/api/*` to the Render
+service's URL, so a visitor's browser only ever talks to one domain — the
+frontend still calls a relative `/api` path (see
+`frontend/src/environments/`), it's just proxied through instead of being
+served from the same box.
+
+Why two platforms instead of one: Vercel also has a newer feature for
+deploying a frontend and backend together as one project (the `services`
+key you'll still see referenced in git history). It turned out to have a
+real bug — for a backend with both a subdirectory root and a compiled
+`dist/` output (exactly this repo's layout), it deploys the backend's code
+in one directory and its own `node_modules` in another, so the deployed
+function can never find its own dependencies (`Cannot find module
+'express'`, despite it being right there in `package.json`). Confirmed by
+actually deploying and reading the file mapping Vercel produced, with two
+different entrypoint configurations hitting the identical bug. Rather than
+wait on a beta feature, the backend now runs on Render, which has no such
+constraint for an ordinary Express app.
+
+One real limitation either way: the backend's SQLite file isn't on
+persistent storage — Render's free tier doesn't include a persistent disk,
+so data can be wiped when the service redeploys or spins back up after
+being idle. Fine for demoing the app; a real production deployment would
+want a hosted database (Postgres, Turso, etc.) instead of a local SQLite
+file.
 
 ## Key decisions and trade-offs
 
