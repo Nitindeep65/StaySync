@@ -4,25 +4,29 @@ A single-property (Seaside Cottage, £120/night base rate) availability
 calendar: view rates/status, override rates, block/unblock dates, take
 bookings, and reconcile a mock channel feed — without double-booking.
 
-- **Backend**: Node.js / TypeScript / Express, persisted to SQLite (`better-sqlite3`).
-- **Frontend**: Angular (standalone components, signals).
+- **`backend/`**: Node.js / TypeScript / Express, persisted to SQLite (`better-sqlite3`).
+- **`frontend/`**: Angular (standalone components, signals).
+
+The two are fully independent projects — separate `package.json`, separate
+`node_modules`, separate dev servers — talking to each other only over HTTP.
 
 ## How to run from a clean clone
 
 Two processes: the API and the Angular dev server. Run each in its own terminal.
 
-**1. Backend**
+**1. Backend** (`backend/`)
 ```
+cd backend
 npm install
 npm run build
 npm start
 ```
-Listens on `http://127.0.0.1:3100`. Data persists to `./data/staysync.db`
+Listens on `http://127.0.0.1:3100`. Data persists to `backend/data/staysync.db`
 (created automatically; override with `DB_PATH`).
 
-**2. Frontend**
+**2. Frontend** (`frontend/`)
 ```
-cd web
+cd frontend
 npm install
 npm start
 ```
@@ -31,8 +35,8 @@ Opens on `http://localhost:4200` and talks directly to `http://127.0.0.1:3100`
 
 **Tests**
 ```
-npm test            # backend: availability/reconciliation logic (node:test)
-cd web && npm test  # frontend: component smoke test (vitest via Angular CLI)
+cd backend && npm test   # availability/reconciliation logic (node:test)
+cd frontend && npm test  # component smoke test (vitest via Angular CLI)
 ```
 
 ## API design
@@ -139,7 +143,7 @@ exercised by the test suite.
 - A booking-cancellation endpoint (`DELETE /bookings/:id`), since a PMS
   without a way to undo a booking is only half the story.
 - Tests around the Express routes themselves (currently the route layer is
-  thin and the logic underneath — `src/availability.ts` — is what's tested;
-  I'd add a supertest-based suite for status codes and validation).
+  thin and the logic underneath — `backend/src/availability.ts` — is what's
+  tested; I'd add a supertest-based suite for status codes and validation).
 - A minimum-stay / dynamic-pricing rule as the stretch goal, since pricing
   logic is the area most likely to grow in complexity.

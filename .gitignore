@@ -1,11 +1,9 @@
 node_modules/
 dist/
-.npm-cache/
-.venv/
-.deps/
 data/
 *.db
 *.log
-web/node_modules/
-web/dist/
 .angular/
+.npm-cache/
+.venv/
+.deps/
