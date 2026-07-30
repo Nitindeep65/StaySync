@@ -3,25 +3,12 @@
         "frontend": {
             "root": "frontend",
             "framework": "angular"
-        },
-        "backend": {
-            "root": "backend"
         }
     },
     "rewrites": [
         {
-            "source": "/api(/.*)?",
-            "destination": {
-                "type": "service",
-                "service": "backend"
-            }
-        },
-        {
-            "source": "/(.*)",
-            "destination": {
-                "type": "service",
-                "service": "frontend"
-            }
+            "source": "/api/:path*",
+            "destination": "https://staysync-backend-huuu.onrender.com/api/:path*"
         }
     ]
 }
