@@ -1,18 +1,22 @@
 # StaySync — availability & pricing manager
 
-A single-property (Seaside Cottage, £120/night base rate) availability
-calendar: view rates/status, override rates, block/unblock dates, take
-bookings, and reconcile a mock channel feed — without double-booking.
+This app manages the booking calendar for one holiday rental (Seaside
+Cottage, £120/night base rate). You can look at rates and availability,
+change rates, block or unblock dates, take bookings, cancel bookings, and
+import a mock "channel feed" of reservations (like you'd get from Airbnb or
+Booking.com) — all without ever double-booking a night.
 
-- **`backend/`**: Node.js / TypeScript / Express, persisted to SQLite (`better-sqlite3`).
-- **`frontend/`**: Angular (standalone components, signals).
+- **`backend/`**: the API. Node.js + TypeScript + Express, with data saved
+  in a SQLite file (via `better-sqlite3`).
+- **`frontend/`**: the web page. Angular (standalone components + signals).
 
-The two are fully independent projects — separate `package.json`, separate
-`node_modules`, separate dev servers — talking to each other only over HTTP.
+Backend and frontend are two separate projects — each has its own
+`package.json` and `node_modules`, and each runs as its own process. They
+only talk to each other over plain HTTP.
 
-## How to run from a clean clone
+## How to run it
 
-Two processes: the API and the Angular dev server. Run each in its own terminal.
+You need two terminals: one for the API, one for the web page.
 
 **1. Backend** (`backend/`)
 ```
@@ -21,8 +25,9 @@ npm install
 npm run build
 npm start
 ```
-Listens on `http://127.0.0.1:3100`. Data persists to `backend/data/staysync.db`
-(created automatically; override with `DB_PATH`).
+This starts the API at `http://127.0.0.1:3100`. It saves data to
+`backend/data/staysync.db`, which is created automatically the first time
+(you can point it somewhere else with the `DB_PATH` environment variable).
 
 **2. Frontend** (`frontend/`)
 ```
@@ -30,172 +35,165 @@ cd frontend
 npm install
 npm start
 ```
-Opens on `http://localhost:4200` and talks directly to `http://127.0.0.1:3100`
-(CORS is enabled on the API for this). No proxy config needed.
+This opens the app at `http://localhost:4200`. It talks straight to
+`http://127.0.0.1:3100` — no proxy setup needed, since the API allows
+cross-origin requests (CORS) from the browser.
 
-**Tests**
+**Running the tests**
 ```
-cd backend && npm test   # availability/reconciliation logic (node:test)
-cd frontend && npm test  # component smoke test (vitest via Angular CLI)
+cd backend && npm test   # tests the booking/pricing/import logic
+cd frontend && npm test  # a basic test that the app component renders
 ```
 
-## API design
+## The API
 
-One property, so no property id in the URL. All dates are `YYYY-MM-DD`.
+There's only one property, so URLs don't need a property id. Every date is
+written as `YYYY-MM-DD`.
 
-| Endpoint | Body / Query | Behaviour |
+| Endpoint | What you send | What it does |
 |---|---|---|
-| `GET /property` | — | Property name, base rate, and the active pricing rules (`pricing.weekendMultiplier`, `pricing.minStayNights`) |
-| `GET /calendar?start=&end=` | — | Inclusive range of `{date, rate, status, bookingGuest?}` — `rate` already has the weekend surcharge/override applied |
-| `POST /rate` | `{start, end, rate}` | Overrides rate for each day in the **inclusive** range |
-| `POST /block` | `{start, end, blocked}` | Blocks/unblocks each day in the **inclusive** range; rejects blocking a day that's already booked (409) |
-| `POST /bookings` | `{checkIn, checkOut, guest}` | Creates a booking; **checkOut is exclusive** (nights = checkIn..checkOut-1); rejects a stay shorter than the minimum (400) or one that overlaps an existing booking/block (409) |
-| `POST /import` | `ImportReservation[]` | Reconciles a channel feed into bookings (see below); **checkOut is exclusive** here too |
+| `GET /property` | — | Returns the property name, base rate, and the current pricing rules (weekend surcharge %, minimum-stay nights) |
+| `GET /calendar?start=&end=` | — | Returns every day in that range (inclusive) with its rate, status, and guest name if booked. The rate already includes any weekend surcharge or manual override. |
+| `POST /rate` | `{start, end, rate}` | Sets a specific rate for every day in that range (inclusive) |
+| `POST /block` | `{start, end, blocked}` | Blocks or unblocks every day in that range (inclusive). Refuses to block a day that's already booked (returns 409). |
+| `POST /bookings` | `{checkIn, checkOut, guest}` | Creates a booking. `checkOut` is exclusive (see below). Rejects a stay that's too short (400) or clashes with an existing booking/block (409). |
+| `DELETE /bookings/:bookingId` | — | Cancels a booking and frees its nights back to available. Returns 404 if that booking id doesn't exist. |
+| `POST /import` | a list of reservations | Reconciles a channel feed into the calendar (explained below). `checkOut` is exclusive here too. |
 
-`rate` and `block` use an **inclusive** range because they operate on calendar
-cells directly ("set these specific days"). `bookings` and the channel-feed
-`import` use **exclusive checkout**, matching the hospitality convention
-(the guest leaves that morning, so the checkout day itself isn't a booked
-night) and matching each other, so the same date pair means the same thing
-whether it comes from a human or from a channel.
+**Why "inclusive" for some endpoints and "exclusive" for others?** `rate`
+and `block` work on specific calendar cells — "set these exact days" — so
+the range includes both the start and end day. Bookings work differently:
+they follow the normal hotel rule where `checkOut` is the day you leave, not
+a night you pay for. So a stay from the 10th to the 12th only books the
+nights of the 10th and 11th — you could have a new guest check in on the
+12th, same day. This matches how a real booking site works, and it's the
+same rule for both a manual booking and an imported one.
 
-### Storage shape
+### How data is stored
 
-Calendar state is sparse: a `day_overrides` table only stores rows for days
-that have been touched (rate override, block, or booking); everything else
-implicitly falls back to the property's base rate and `available` status.
-A separate `imported_reservations` table records which channel-feed
-reservation ids have already been committed, so re-running an import is a
-true no-op rather than relying on incidental side effects.
+Most days have nothing special about them, so we don't store a row for
+every single day. There's one table, `day_overrides`, that only has a row
+for a day once something happens to it — a rate change, a block, or a
+booking. Any day with no row is just "available, at the normal base rate."
 
-## Reconciliation decisions (the interesting bit)
+A second table, `imported_reservations`, keeps a list of every channel-feed
+reservation id we've already processed. That way, if you run the same
+import twice, the second run does nothing new — it recognizes the ids it's
+already seen.
 
-Given a feed of reservations, in order:
+## How the channel-feed import works
 
-1. **Cancelled** (`status: "cancelled"`) reservations are skipped outright —
-   never booked, never counted as a conflict.
-2. **Duplicates** are deduped by `id`: first occurrence in the feed wins,
-   later ones with the same id are dropped and reported separately
-   (`duplicatesInFeed`).
-3. **Already-imported** reservations (an id committed by an earlier call to
-   `/import`) are skipped and reported as `alreadyImported`, not
-   re-processed and not reported as a conflict. This is what makes
-   re-running the import idempotent — it's an explicit id ledger, not a
-   side effect of the calendar already showing those nights as booked.
-4. **Conflicts**: remaining reservations are checked, in feed order, against
-   the full persisted calendar *and* against reservations already accepted
-   earlier in the same batch. The first reservation to claim a night wins;
-   anyone claiming an already-claimed night is rejected and reported in
-   `conflicts` with a reason. This is a first-come-first-served rule within
-   a batch, which is the simplest defensible behaviour without a "priority"
-   concept the brief doesn't define.
+When you import a list of reservations, each one is handled in this order:
 
-The bundled `reservations.json` demonstrates all four cases: id `1001`
-appears twice (duplicate), `0999` is cancelled, and `1003` (Sam P., Aug 13–16)
-genuinely overlaps `1002` (Maria S., Aug 15–18) on the night of Aug 15 — a
-real conflict, not a synthetic one, so the conflict path is actually
-exercised by the test suite.
+1. **Cancelled** reservations are skipped straight away — never booked.
+2. **Duplicates**: if the same reservation id shows up twice in the same
+   feed, only the first one counts. The rest are reported separately.
+3. **Already imported**: if we've already processed this id in an earlier
+   import, we skip it again and report it as "already imported" — not as a
+   conflict. This is what makes re-running an import safe.
+4. **Conflicts**: everything left over is checked against the existing
+   calendar *and* against reservations already accepted earlier in the same
+   batch. Whoever claims a night first, in feed order, gets it — anyone
+   trying to claim an already-taken night is rejected and listed as a
+   conflict, with a reason.
 
-## Stretch goal: dynamic pricing rules
+The sample file `reservations.json` shows all four cases at once: one
+reservation id appears twice (a duplicate), one is marked cancelled, and two
+different bookings genuinely overlap on the same night — a real conflict,
+not a made-up one, so the test suite actually exercises it.
 
-Two rules, applied on top of the base rate:
+## Bonus feature: dynamic pricing
 
-1. **Weekend surcharge** — Friday and Saturday nights are priced at
-   `baseRate × 1.25` (rounded), everything else at `baseRate`. This is
-   resolved at *read time* in `effectiveRate()` (`backend/src/availability.ts`),
-   not persisted — a day only gets a row in `day_overrides` when something
-   actually happened to it (a manual rate override, a block, a booking).
-2. **Minimum-stay rule, weekends only** — a booking created via
-   `POST /bookings` must be at least `MIN_STAY_NIGHTS` (2) nights **if any of
-   its nights fall on a Friday or Saturday**; a pure weeknight stay (e.g. a
-   single Tuesday night) has no minimum. A shorter weekend-including request
-   is rejected with `400` and `reason: "min-stay"` before availability is
-   even checked.
+Two extra pricing rules sit on top of the base rate:
 
-Key decisions:
+1. **Weekend surcharge** — Friday and Saturday nights cost 25% more than
+   the base rate (rounded to a whole number). This isn't stored anywhere;
+   it's calculated fresh every time you read the calendar, in a function
+   called `effectiveRate()`. A day only gets a database row when something
+   is actually done to it.
+2. **Minimum 2-night stay, but only for weekends** — a booking that
+   includes a Friday or Saturday night must be at least 2 nights. A booking
+   for a single weeknight (say, just a Tuesday) has no minimum at all.
 
-- **An explicit rate override always wins over the weekend rule.** If the
-  owner has set a specific rate for a Saturday via `POST /rate`, that's what
-  shows and what's charged — the dynamic rule only fills in days nobody has
-  touched. This is why `DayRecord.rate` is `number | null`: `null` means
-  "no override, apply the rules"; a real number means "this exact figure,
-  full stop." Precedence logic lives entirely in `effectiveRate()`.
-- **The minimum-stay rule only applies when the stay touches a weekend
-  night, and only gates new direct bookings, not the channel feed.** Real
-  minimum-stay policies are almost always a weekend/peak-night thing (protect
-  the Friday/Saturday from a single low-value night), not a blanket rule —
-  a lone Tuesday booking shouldn't be rejected. And a reservation arriving
-  from Channex/an OTA is already a confirmed external booking — rejecting a
-  1-night OTA reservation for violating a policy the OTA guest never saw
-  would be wrong; `reconcileReservations` deliberately doesn't check it.
-- **The displayed rate for an already-booked night is recomputed on every
-  read**, not frozen at the moment of booking. There's no invoicing/pricing-
-  history concept in this app — only calendar management — so "what would
-  this night cost today" is what's shown, consistent with how the original
-  (pre-pricing-rules) version already behaved for booked days.
-- `GET /property` exposes both constants (`pricing.weekendMultiplier`,
-  `pricing.minStayNights`) so the frontend can display them instead of
-  hardcoding a second copy of the business rule.
+A few choices worth explaining:
 
-## UX notes
+- **A manual rate override always beats the weekend surcharge.** If you've
+  set a specific price for a Saturday, that's the price shown and charged —
+  the weekend rule only fills in days nobody has touched.
+- **The minimum-stay rule only applies to bookings made directly in this
+  app, not to imported reservations.** A reservation coming from an OTA
+  (like Airbnb) is already a confirmed booking made under that OTA's own
+  rules — it wouldn't be fair to reject it here for breaking a policy the
+  guest never even saw.
+- **The price shown for an already-booked night updates over time**, rather
+  than being frozen at the moment it was booked. This app only manages the
+  calendar, not invoices, so it always shows "what this night would cost
+  today."
+- `GET /property` returns both pricing numbers (the surcharge percentage
+  and the minimum nights) so the app can display them instead of having the
+  same numbers hardcoded in two places.
 
-- The calendar is a real month grid (correct weekday alignment, not just a
-  flat list of days) with month navigation.
-- Rate/block actions use click-to-select on the grid: click a day to start a
-  range, click another (or the same day again) to complete it.
-- A failed booking (date clash) surfaces as an inline dismissible banner
-  driven by the API's 409 response — not a browser `alert()` and not an
-  unhandled error.
-- Colour-coded day cells: green = available, red = booked (with guest name),
-  amber = blocked, with a rate pill per day and a legend explaining the
-  weekend surcharge.
-- The minimum-stay rule surfaces the same way a booking conflict does — an
-  inline banner ("Minimum stay is 2 nights for stays that include a Fri/Sat
-  night (requested 1).") rather than a raw validation error, and the "New
-  booking" card states the weekend-only minimum up front so it's not a
-  surprise on submit.
+## Notes on the interface
 
-## Key decisions & trade-offs
+- The calendar looks like a real month (correct weekday columns), with
+  buttons to move to the previous/next month.
+- To set a rate or block dates, click a day to start a range, then click
+  another day to finish it.
+- If a booking fails (say, the dates clash), you see a friendly message on
+  the page — never a raw browser pop-up or a crash.
+- Day colours: green = available, red = booked (shows the guest's name),
+  amber = blocked. Each day also shows its price, and there's a legend
+  explaining the weekend surcharge.
+- The minimum-stay rule shows the same kind of friendly message as a
+  booking clash, and the "New booking" form explains the rule up front so
+  it's not a surprise.
+- Every booking in the current month is also listed below the calendar
+  (guest, dates, number of nights), with a **Cancel** button per booking
+  (asks for confirmation first) so you don't have to hunt through the grid
+  to find and undo one.
 
-- **SQLite over Postgres/Mongo**: zero setup for a reviewer running this
-  locally; a single file, no external service.
-- **Sparse override table instead of a dense per-day table**: avoids seeding
-  years of rows up front; a day with no row is just "available at base
-  rate." Trade-off: computing a calendar range means a full table scan of
-  overrides rather than an indexed range query — fine at this scale (one
-  property, a few thousand days at most), would need revisiting for many
-  properties/years of history.
-- **No auth, single property**: out of scope per the brief; the schema
-  (`property` table with `id=1`) is deliberately shaped so multi-property
-  would mean adding a `property_id` column, not a rewrite.
-- **Booking cancellation isn't implemented**: the brief asks for create +
-  reject-overlap, not cancel; didn't want to invent an unrequested endpoint.
-- **Angular talks to the API by absolute URL + CORS**, not a build-time
-  proxy — simpler for a reviewer running two `npm start`s side by side.
+## Key decisions and trade-offs
+
+- **SQLite instead of Postgres/Mongo**: nothing to install or configure —
+  it's just a file, so anyone can run this project immediately.
+- **Only storing days that changed, not every day**: keeps the database
+  small and avoids pre-filling years of rows. The trade-off is that reading
+  a calendar range has to scan the whole overrides table rather than using
+  an index — perfectly fine at this size (one property, a few years of
+  days at most), but would need a different approach for many properties.
+- **No login system, one property only**: this was out of scope for the
+  task. The database is still shaped so adding more properties later would
+  just mean adding a `property_id` column, not rebuilding everything.
+- **The frontend calls the API by its full address, not through a build
+  proxy** — this keeps setup simple when running both `npm start` commands
+  side by side.
 
 ## What I deliberately left out
 
-- Authentication and multi-property support.
-- Editing/cancelling an existing booking.
-- The iCal (`.ics`) variant of the feed — only the JSON form is implemented.
-- The other stretch-goal options (mobile, deploy, a dedicated test-focused
-  pass, auth) — the brief asks for one at most; dynamic pricing was chosen
-  because it exercises the same "rules on top of base data" thinking as the
-  reconciliation logic, and stacks cleanly on the existing rate/override model.
-- Deployment: runs locally only.
-- A seasonal multiplier (the brief's other pricing example) — weekend +
-  minimum-stay already demonstrate the pattern; a third overlapping rule
-  would mostly add "which rule wins when both apply" complexity without
-  showing a new capability.
+- User accounts/login, and managing more than one property.
+- Editing an existing booking's dates (you can cancel and rebook, but not
+  change a booking in place).
+- The calendar-file (`.ics`) version of the channel feed — only the JSON
+  version is supported.
+- The other bonus-feature options (mobile support, deploying it online, a
+  bigger test suite, login system) — the task only asked for one bonus
+  feature. I picked dynamic pricing because it uses the same kind of
+  thinking as the import logic (rules layered on top of plain data).
+- Hosting this online — it's built to run on your own machine only.
+- A seasonal price multiplier (a second pricing idea from the brief) — the
+  weekend surcharge and minimum-stay rule already show the same pattern,
+  and a third rule would mostly add complexity about which rule wins,
+  without demonstrating anything new.
 
-## What I'd do next with more time
+## What I'd do with more time
 
-- Move the sparse-override scan to an indexed range query once it'd matter.
-- A booking-cancellation endpoint (`DELETE /bookings/:id`), since a PMS
-  without a way to undo a booking is only half the story.
-- Tests around the Express routes themselves (currently the route layer is
-  thin and the logic underneath — `backend/src/availability.ts` — is what's
-  tested; I'd add a supertest-based suite for status codes and validation).
-- A seasonal multiplier and a small rules-precedence table, if pricing grew
-  a third rule — right now "override beats weekend rule" is the only
-  precedence decision and it's simple enough to live as a comment.
+- Make the calendar-range lookup faster (an indexed query) once the
+  overrides table got large enough for it to matter.
+- Add tests that go through the actual HTTP routes, not just the logic
+  underneath — right now the routes are thin and the logic in
+  `backend/src/availability.ts` is what's tested directly. A route-level
+  test suite would also check status codes and input validation.
+- A seasonal multiplier and a small table explaining which pricing rule
+  wins when more than one applies, if a third rule got added — right now
+  "manual override beats the weekend rule" is the only such decision, and
+  it's simple enough to explain in a code comment.
