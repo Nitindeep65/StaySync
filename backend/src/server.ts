@@ -8,6 +8,8 @@ import {
   buildCalendarRange,
   createBooking,
   reconcileReservations,
+  MIN_STAY_NIGHTS,
+  WEEKEND_RATE_MULTIPLIER,
   type ImportReservation
 } from './availability';
 import { CalendarStore } from './store';
@@ -26,7 +28,13 @@ function isValidDate(value: unknown): value is string {
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/property', (_req, res) => {
-  res.json(store.getProperty());
+  res.json({
+    ...store.getProperty(),
+    pricing: {
+      weekendMultiplier: WEEKEND_RATE_MULTIPLIER,
+      minStayNights: MIN_STAY_NIGHTS
+    }
+  });
 });
 
 app.get('/calendar', (req, res) => {
@@ -79,7 +87,8 @@ app.post('/bookings', (req, res) => {
   const bookingId = randomUUID();
   const result = createBooking(overrides, baseRate, checkIn, checkOut, guest, bookingId);
   if (!result.ok) {
-    return res.status(409).json({ error: result.error });
+    const status = result.reason === 'overlap' ? 409 : 400;
+    return res.status(status).json({ error: result.error, reason: result.reason });
   }
   store.saveOverrides(result.updates ?? []);
   return res.status(201).json({ bookingId, days: buildCalendarRange(store.getAllOverrides(), baseRate, checkIn, checkOut) });

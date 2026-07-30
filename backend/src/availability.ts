@@ -19,6 +19,7 @@ export interface ImportReservation {
 export interface BookingResult {
   ok: boolean;
   error?: string;
+  reason?: 'invalid-range' | 'min-stay' | 'overlap';
   updates?: DayRecord[];
 }
 
@@ -43,6 +44,21 @@ export interface ReconcileResult {
 }
 
 const dayMs = 24 * 60 * 60 * 1000;
+
+/**
+ * Dynamic pricing (stretch goal): a weekend surcharge applied on top of the
+ * base rate, plus a minimum-stay rule enforced on new direct bookings.
+ * An explicit rate override always wins over the weekend rule — see
+ * `effectiveRate`.
+ */
+export const WEEKEND_RATE_MULTIPLIER = 1.25;
+export const MIN_STAY_NIGHTS = 2;
+
+/** Friday and Saturday nights carry the weekend surcharge. */
+export function isWeekendNight(date: string): boolean {
+  const day = parseDate(date).getUTCDay();
+  return day === 5 || day === 6;
+}
 
 function parseDate(value: string): Date {
   const [year, month, day] = value.split('-').map(Number);
@@ -79,8 +95,16 @@ function getDay(overrides: Map<string, DayRecord>, baseRate: number, date: strin
   return overrides.get(date) ?? { date, rate: null, status: 'available' };
 }
 
+/**
+ * Resolves the nightly rate actually charged for a day: an explicit
+ * override (set via POST /rate) always wins; otherwise the weekend
+ * surcharge applies on top of the base rate for Fri/Sat nights.
+ */
 export function effectiveRate(day: DayRecord, baseRate: number): number {
-  return day.rate ?? baseRate;
+  if (day.rate != null) {
+    return day.rate;
+  }
+  return isWeekendNight(day.date) ? Math.round(baseRate * WEEKEND_RATE_MULTIPLIER) : baseRate;
 }
 
 export function buildCalendarRange(
@@ -149,12 +173,24 @@ export function createBooking(
 ): BookingResult {
   const nights = nightsOfStay(checkIn, checkOut);
   if (nights.length === 0) {
-    return { ok: false, error: 'checkOut must be after checkIn.' };
+    return { ok: false, error: 'checkOut must be after checkIn.', reason: 'invalid-range' };
+  }
+
+  if (nights.length < MIN_STAY_NIGHTS) {
+    return {
+      ok: false,
+      error: `Minimum stay is ${MIN_STAY_NIGHTS} nights (requested ${nights.length}).`,
+      reason: 'min-stay'
+    };
   }
 
   const unavailable = nights.find((date) => getDay(overrides, baseRate, date).status !== 'available');
   if (unavailable) {
-    return { ok: false, error: `Booking overlaps with an existing booking or block on ${unavailable}.` };
+    return {
+      ok: false,
+      error: `Booking overlaps with an existing booking or block on ${unavailable}.`,
+      reason: 'overlap'
+    };
   }
 
   const updates = nights.map((date) => ({

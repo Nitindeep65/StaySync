@@ -34,10 +34,14 @@ export class App implements OnInit {
   protected readonly weekdayLabels = WEEKDAY_LABELS;
 
   protected readonly baseRate = signal(120);
+  protected readonly weekendMultiplier = signal(1.25);
+  protected readonly minStayNights = signal(2);
   protected readonly viewYear = signal(2026);
   protected readonly viewMonth = signal(7); // 0-indexed: August
 
   private readonly daysByDate = signal<Map<string, CalendarDay>>(new Map());
+
+  protected readonly weekendUpliftPercent = computed(() => Math.round((this.weekendMultiplier() - 1) * 100));
 
   protected readonly monthLabel = computed(() => {
     const d = new Date(Date.UTC(this.viewYear(), this.viewMonth(), 1));
@@ -97,6 +101,8 @@ export class App implements OnInit {
       next: (property) => {
         this.baseRate.set(property.baseRate);
         this.rateValue.set(property.baseRate);
+        this.weekendMultiplier.set(property.pricing.weekendMultiplier);
+        this.minStayNights.set(property.pricing.minStayNights);
       },
       error: () => {}
     });

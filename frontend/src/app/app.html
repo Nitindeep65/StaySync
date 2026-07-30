@@ -29,6 +29,7 @@
         <span class="legend-item"><i class="dot dot-available"></i>Available</span>
         <span class="legend-item"><i class="dot dot-booked"></i>Booked</span>
         <span class="legend-item"><i class="dot dot-blocked"></i>Blocked</span>
+        <span class="legend-item">🗓️ Fri/Sat +{{ weekendUpliftPercent() }}% unless overridden</span>
       </div>
 
       <div class="weekday-row">
@@ -85,6 +86,7 @@
 
       <div class="card">
         <h3><span class="card-icon">☐</span>New booking</h3>
+        <p class="hint">Minimum stay: {{ minStayNights() }} nights.</p>
         <label class="field">
           <span>Check-in</span>
           <input type="date" [ngModel]="bookingCheckIn()" (ngModelChange)="bookingCheckIn.set($event)" />

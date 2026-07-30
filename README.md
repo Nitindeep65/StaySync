@@ -45,11 +45,11 @@ One property, so no property id in the URL. All dates are `YYYY-MM-DD`.
 
 | Endpoint | Body / Query | Behaviour |
 |---|---|---|
-| `GET /property` | — | Property name + base rate |
-| `GET /calendar?start=&end=` | — | Inclusive range of `{date, rate, status, bookingGuest?}` |
+| `GET /property` | — | Property name, base rate, and the active pricing rules (`pricing.weekendMultiplier`, `pricing.minStayNights`) |
+| `GET /calendar?start=&end=` | — | Inclusive range of `{date, rate, status, bookingGuest?}` — `rate` already has the weekend surcharge/override applied |
 | `POST /rate` | `{start, end, rate}` | Overrides rate for each day in the **inclusive** range |
 | `POST /block` | `{start, end, blocked}` | Blocks/unblocks each day in the **inclusive** range; rejects blocking a day that's already booked (409) |
-| `POST /bookings` | `{checkIn, checkOut, guest}` | Creates a booking; **checkOut is exclusive** (nights = checkIn..checkOut-1); rejects on any overlap with an existing booking or block (409) |
+| `POST /bookings` | `{checkIn, checkOut, guest}` | Creates a booking; **checkOut is exclusive** (nights = checkIn..checkOut-1); rejects a stay shorter than the minimum (400) or one that overlaps an existing booking/block (409) |
 | `POST /import` | `ImportReservation[]` | Reconciles a channel feed into bookings (see below); **checkOut is exclusive** here too |
 
 `rate` and `block` use an **inclusive** range because they operate on calendar
@@ -96,6 +96,41 @@ genuinely overlaps `1002` (Maria S., Aug 15–18) on the night of Aug 15 — a
 real conflict, not a synthetic one, so the conflict path is actually
 exercised by the test suite.
 
+## Stretch goal: dynamic pricing rules
+
+Two rules, applied on top of the base rate:
+
+1. **Weekend surcharge** — Friday and Saturday nights are priced at
+   `baseRate × 1.25` (rounded), everything else at `baseRate`. This is
+   resolved at *read time* in `effectiveRate()` (`backend/src/availability.ts`),
+   not persisted — a day only gets a row in `day_overrides` when something
+   actually happened to it (a manual rate override, a block, a booking).
+2. **Minimum-stay rule** — new bookings created via `POST /bookings` must be
+   at least `MIN_STAY_NIGHTS` (2) nights; a shorter request is rejected with
+   `400` and `reason: "min-stay"` before availability is even checked.
+
+Key decisions:
+
+- **An explicit rate override always wins over the weekend rule.** If the
+  owner has set a specific rate for a Saturday via `POST /rate`, that's what
+  shows and what's charged — the dynamic rule only fills in days nobody has
+  touched. This is why `DayRecord.rate` is `number | null`: `null` means
+  "no override, apply the rules"; a real number means "this exact figure,
+  full stop." Precedence logic lives entirely in `effectiveRate()`.
+- **The minimum-stay rule only gates new direct bookings, not the channel
+  feed.** A reservation arriving from Channex/an OTA is already a confirmed
+  external booking — rejecting a 1-night OTA reservation for violating a
+  minimum-stay policy the OTA guest never saw would be wrong; `reconcileReservations`
+  deliberately doesn't check it.
+- **The displayed rate for an already-booked night is recomputed on every
+  read**, not frozen at the moment of booking. There's no invoicing/pricing-
+  history concept in this app — only calendar management — so "what would
+  this night cost today" is what's shown, consistent with how the original
+  (pre-pricing-rules) version already behaved for booked days.
+- `GET /property` exposes both constants (`pricing.weekendMultiplier`,
+  `pricing.minStayNights`) so the frontend can display them instead of
+  hardcoding a second copy of the business rule.
+
 ## UX notes
 
 - The calendar is a real month grid (correct weekday alignment, not just a
@@ -105,8 +140,13 @@ exercised by the test suite.
 - A failed booking (date clash) surfaces as an inline dismissible banner
   driven by the API's 409 response — not a browser `alert()` and not an
   unhandled error.
-- Colour-coded day cells: grey = available, red = booked (with guest name),
-  yellow = blocked.
+- Colour-coded day cells: green = available, red = booked (with guest name),
+  amber = blocked, with a rate pill per day and a legend explaining the
+  weekend surcharge.
+- The minimum-stay rule surfaces the same way a booking conflict does — an
+  inline banner ("Minimum stay is 2 nights (requested 1).") rather than a
+  raw validation error, and the "New booking" card states the minimum up
+  front so it's not a surprise on submit.
 
 ## Key decisions & trade-offs
 
@@ -131,11 +171,15 @@ exercised by the test suite.
 - Authentication and multi-property support.
 - Editing/cancelling an existing booking.
 - The iCal (`.ics`) variant of the feed — only the JSON form is implemented.
-- Any stretch goal (dynamic pricing, mobile, deploy, more tests) — the brief
-  asks for one at most, and I judged the core (persistence + correct
-  checkout/conflict/idempotency semantics + a real Angular UI) as more
-  valuable to get right than adding a fifth feature on top.
+- The other stretch-goal options (mobile, deploy, a dedicated test-focused
+  pass, auth) — the brief asks for one at most; dynamic pricing was chosen
+  because it exercises the same "rules on top of base data" thinking as the
+  reconciliation logic, and stacks cleanly on the existing rate/override model.
 - Deployment: runs locally only.
+- A seasonal multiplier (the brief's other pricing example) — weekend +
+  minimum-stay already demonstrate the pattern; a third overlapping rule
+  would mostly add "which rule wins when both apply" complexity without
+  showing a new capability.
 
 ## What I'd do next with more time
 
@@ -145,5 +189,6 @@ exercised by the test suite.
 - Tests around the Express routes themselves (currently the route layer is
   thin and the logic underneath — `backend/src/availability.ts` — is what's
   tested; I'd add a supertest-based suite for status codes and validation).
-- A minimum-stay / dynamic-pricing rule as the stretch goal, since pricing
-  logic is the area most likely to grow in complexity.
+- A seasonal multiplier and a small rules-precedence table, if pricing grew
+  a third rule — right now "override beats weekend rule" is the only
+  precedence decision and it's simple enough to live as a comment.

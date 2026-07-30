@@ -6,6 +6,8 @@ import {
   buildCalendarRange,
   createBooking,
   reconcileReservations,
+  MIN_STAY_NIGHTS,
+  WEEKEND_RATE_MULTIPLIER,
   type DayRecord,
   type ImportReservation
 } from '../src/availability';
@@ -61,7 +63,34 @@ test('bookings reject overlaps with existing bookings or blocks', () => {
 
   const result = createBooking(overrides, baseRate, '2026-08-01', '2026-08-03', 'Guest', 'booking-2');
   assert.equal(result.ok, false);
+  assert.equal(result.reason, 'overlap');
   assert.match(result.error ?? '', /overlap/i);
+});
+
+test('dynamic pricing: weekend nights (Fri/Sat) carry a surcharge unless overridden', () => {
+  const overrides = new Map<string, DayRecord>();
+
+  // 2026-08-01 is a Saturday, 2026-08-03 is a Monday.
+  const range = buildCalendarRange(overrides, baseRate, '2026-08-01', '2026-08-03');
+  assert.equal(range[0].rate, Math.round(baseRate * WEEKEND_RATE_MULTIPLIER));
+  assert.equal(range[2].rate, baseRate);
+
+  const overridden = applyRateOverride(overrides, baseRate, '2026-08-01', '2026-08-01', 100);
+  for (const update of overridden) overrides.set(update.date, update);
+  const rangeAfterOverride = buildCalendarRange(overrides, baseRate, '2026-08-01', '2026-08-01');
+  assert.equal(rangeAfterOverride[0].rate, 100, 'an explicit override wins over the weekend rule');
+});
+
+test('dynamic pricing: minimum-stay rule rejects bookings shorter than the minimum', () => {
+  const overrides = new Map<string, DayRecord>();
+  const oneNight = createBooking(overrides, baseRate, '2026-08-10', '2026-08-11', 'Guest', 'booking-3');
+  assert.equal(oneNight.ok, false);
+  assert.equal(oneNight.reason, 'min-stay');
+  assert.match(oneNight.error ?? '', /minimum stay/i);
+
+  const twoNights = createBooking(overrides, baseRate, '2026-08-10', '2026-08-12', 'Guest', 'booking-4');
+  assert.equal(twoNights.ok, true);
+  assert.equal(twoNights.updates?.length, MIN_STAY_NIGHTS);
 });
 
 const feed: ImportReservation[] = [

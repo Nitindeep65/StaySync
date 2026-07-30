@@ -7,9 +7,15 @@ export interface CalendarDay {
   bookingGuest?: string;
 }
 
+export interface PricingRules {
+  weekendMultiplier: number;
+  minStayNights: number;
+}
+
 export interface Property {
   name: string;
   baseRate: number;
+  pricing: PricingRules;
 }
 
 export interface ConflictDetail {
