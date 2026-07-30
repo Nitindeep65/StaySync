@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { catchError, Observable, throwError } from 'rxjs';
+import { environment } from '../environments/environment';
 import { CalendarDay, ImportReservation, ImportSummary, Property } from './models';
 
 export interface ApiError {
@@ -8,7 +9,7 @@ export interface ApiError {
   message: string;
 }
 
-const API_BASE = 'http://127.0.0.1:3100';
+const API_BASE = environment.apiBase;
 
 @Injectable({ providedIn: 'root' })
 export class Api {
