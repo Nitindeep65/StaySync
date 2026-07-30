@@ -1,24 +1,34 @@
 <div class="page">
   <header class="topbar">
-    <div>
-      <h1>StaySync</h1>
-      <p class="subtitle">Seaside Cottage · base rate £{{ baseRate() }}/night</p>
+    <div class="brand">
+      <span class="brand-mark">S</span>
+      <div>
+        <h1>StaySync</h1>
+        <p class="subtitle">Seaside Cottage · base rate £{{ baseRate() }}/night</p>
+      </div>
     </div>
   </header>
 
   @if (status(); as s) {
     <div class="banner" [class.error]="s.kind === 'error'" [class.success]="s.kind === 'success'">
-      <span>{{ s.text }}</span>
-      <button class="banner-close" (click)="dismissStatus()">✕</button>
+      <span class="banner-icon">{{ s.kind === 'error' ? '⚠' : '✓' }}</span>
+      <span class="banner-text">{{ s.text }}</span>
+      <button type="button" class="banner-close" aria-label="Dismiss" (click)="dismissStatus()">✕</button>
     </div>
   }
 
   <div class="layout">
-    <section class="calendar-panel">
+    <section class="calendar-panel" [class.is-loading]="loading()">
       <div class="month-nav">
-        <button (click)="prevMonth()">‹ Prev</button>
+        <button type="button" class="nav-btn" (click)="prevMonth()" aria-label="Previous month">‹</button>
         <h2>{{ monthLabel() }}</h2>
-        <button (click)="nextMonth()">Next ›</button>
+        <button type="button" class="nav-btn" (click)="nextMonth()" aria-label="Next month">›</button>
+      </div>
+
+      <div class="legend">
+        <span class="legend-item"><i class="dot dot-available"></i>Available</span>
+        <span class="legend-item"><i class="dot dot-booked"></i>Booked</span>
+        <span class="legend-item"><i class="dot dot-blocked"></i>Blocked</span>
       </div>
 
       <div class="weekday-row">
@@ -38,14 +48,12 @@
               [class.status-booked]="cell.day?.status === 'booked'"
               [class.status-blocked]="cell.day?.status === 'blocked'"
               [class.selected]="cell.inMonth && isInSelection(cell.date)"
+              [disabled]="!cell.inMonth"
               (click)="onDayClick(cell)"
             >
               <span class="day-number">{{ cell.date.slice(8) }}</span>
               @if (cell.day && cell.inMonth) {
                 <span class="day-rate">£{{ cell.day.rate }}</span>
-                @if (cell.day.status !== 'available') {
-                  <span class="day-status">{{ cell.day.status }}</span>
-                }
                 @if (cell.day.bookingGuest) {
                   <span class="day-guest">{{ cell.day.bookingGuest }}</span>
                 }
@@ -58,56 +66,75 @@
 
     <aside class="controls">
       <div class="card">
-        <h3>Rate &amp; availability</h3>
+        <h3><span class="card-icon">£</span>Rate &amp; availability</h3>
         <p class="hint">{{ rangeLabel() }}</p>
-        <button class="link-btn" (click)="clearSelection()">Clear selection</button>
+        @if (rangeStart()) {
+          <button type="button" class="link-btn" (click)="clearSelection()">Clear selection</button>
+        }
 
         <label class="field">
-          Rate (£/night)
+          <span>Rate (£/night)</span>
           <input type="number" min="1" [ngModel]="rateValue()" (ngModelChange)="rateValue.set($event)" />
         </label>
         <div class="btn-row">
-          <button (click)="applyRate()">Set rate</button>
-          <button (click)="applyBlock(true)">Block</button>
-          <button (click)="applyBlock(false)">Unblock</button>
+          <button type="button" class="btn-primary" (click)="applyRate()">Set rate</button>
+          <button type="button" class="btn-secondary" (click)="applyBlock(true)">Block</button>
+          <button type="button" class="btn-ghost" (click)="applyBlock(false)">Unblock</button>
         </div>
       </div>
 
       <div class="card">
-        <h3>New booking</h3>
+        <h3><span class="card-icon">☐</span>New booking</h3>
         <label class="field">
-          Check-in
+          <span>Check-in</span>
           <input type="date" [ngModel]="bookingCheckIn()" (ngModelChange)="bookingCheckIn.set($event)" />
         </label>
         <label class="field">
-          Check-out
+          <span>Check-out</span>
           <input type="date" [ngModel]="bookingCheckOut()" (ngModelChange)="bookingCheckOut.set($event)" />
         </label>
         <label class="field">
-          Guest name
+          <span>Guest name</span>
           <input type="text" [ngModel]="bookingGuest()" (ngModelChange)="bookingGuest.set($event)" placeholder="Jane Doe" />
         </label>
-        <button (click)="submitBooking()">Book</button>
+        <button type="button" class="btn-primary btn-block" (click)="submitBooking()">Book</button>
       </div>
 
       <div class="card">
-        <h3>Channel feed</h3>
+        <h3><span class="card-icon">⇄</span>Channel feed</h3>
         <p class="hint">Imports the bundled mock reservation feed and reconciles it into the calendar.</p>
-        <button (click)="importMockFeed()">Import mock feed</button>
+        <button type="button" class="btn-secondary btn-block" (click)="importMockFeed()">Import mock feed</button>
 
         @if (importSummary(); as summary) {
-          <ul class="summary-list">
-            <li>Imported: {{ summary.imported.length || 'none' }} {{ summary.imported.join(', ') }}</li>
-            <li>Duplicates in feed: {{ summary.duplicatesInFeed.length || 'none' }} {{ summary.duplicatesInFeed.join(', ') }}</li>
-            <li>Already imported: {{ summary.alreadyImported.length || 'none' }} {{ summary.alreadyImported.join(', ') }}</li>
-            <li>Cancelled: {{ summary.cancelled.length || 'none' }} {{ summary.cancelled.join(', ') }}</li>
-            <li>
-              Conflicts: {{ summary.conflicts.length || 'none' }}
-              @for (c of summary.conflicts; track c.id) {
-                <div class="conflict-line">{{ c.id }} — {{ c.reason }}</div>
-              }
-            </li>
-          </ul>
+          <dl class="summary-grid">
+            <div class="summary-row">
+              <dt>Imported</dt>
+              <dd class="chip chip-success">{{ summary.imported.length }}</dd>
+              <span class="summary-ids">{{ summary.imported.join(', ') || '—' }}</span>
+            </div>
+            <div class="summary-row">
+              <dt>Duplicates in feed</dt>
+              <dd class="chip">{{ summary.duplicatesInFeed.length }}</dd>
+              <span class="summary-ids">{{ summary.duplicatesInFeed.join(', ') || '—' }}</span>
+            </div>
+            <div class="summary-row">
+              <dt>Already imported</dt>
+              <dd class="chip">{{ summary.alreadyImported.length }}</dd>
+              <span class="summary-ids">{{ summary.alreadyImported.join(', ') || '—' }}</span>
+            </div>
+            <div class="summary-row">
+              <dt>Cancelled</dt>
+              <dd class="chip">{{ summary.cancelled.length }}</dd>
+              <span class="summary-ids">{{ summary.cancelled.join(', ') || '—' }}</span>
+            </div>
+            <div class="summary-row">
+              <dt>Conflicts</dt>
+              <dd class="chip chip-danger">{{ summary.conflicts.length }}</dd>
+            </div>
+            @for (c of summary.conflicts; track c.id) {
+              <div class="conflict-line">{{ c.id }} — {{ c.reason }}</div>
+            }
+          </dl>
         }
       </div>
     </aside>
