@@ -1,9 +1,9 @@
 <div class="page">
-  <header class="topbar">
+  <header class="mb-5">
     <div class="brand">
       <span class="brand-mark">S</span>
       <div>
-        <h1>StaySync</h1>
+        <h1 class="m-0 text-2xl font-bold tracking-tight">StaySync</h1>
         <p class="subtitle">Seaside Cottage · base rate £{{ baseRate() }}/night</p>
       </div>
     </div>
@@ -11,7 +11,7 @@
 
   @if (status(); as s) {
     <div class="banner" [class.error]="s.kind === 'error'" [class.success]="s.kind === 'success'">
-      <span class="banner-icon">{{ s.kind === 'error' ? '⚠' : '✓' }}</span>
+      <span class="text-base leading-none">{{ s.kind === 'error' ? '⚠' : '✓' }}</span>
       <span class="banner-text">{{ s.text }}</span>
       <button type="button" class="banner-close" aria-label="Dismiss" (click)="dismissStatus()">✕</button>
     </div>
@@ -21,7 +21,7 @@
     <section class="calendar-panel" [class.is-loading]="loading()">
       <div class="month-nav">
         <button type="button" class="nav-btn" (click)="prevMonth()" aria-label="Previous month">‹</button>
-        <h2>{{ monthLabel() }}</h2>
+        <h2 class="m-0 text-base font-semibold">{{ monthLabel() }}</h2>
         <button type="button" class="nav-btn" (click)="nextMonth()" aria-label="Next month">›</button>
       </div>
 
