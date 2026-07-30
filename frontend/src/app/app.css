@@ -286,11 +286,43 @@
 }
 
 .field input {
-  @apply rounded-md border border-gray-200 px-2.5 py-2 font-sans text-sm text-slate-900;
+  @apply w-full rounded-md border border-gray-200 px-2.5 py-2 font-sans text-sm text-slate-900 transition-colors;
+}
+
+.field input:hover {
+  @apply border-gray-300;
 }
 
 .field input:focus {
   @apply border-brand shadow-[0_0_0_3px_rgb(37_99_235_/_12%)] outline-none;
+}
+
+.field-row {
+  @apply grid grid-cols-2 gap-3;
+}
+
+.min-stay-badge {
+  @apply mb-4 flex items-start gap-2 rounded-lg bg-blue-50 px-3 py-2.5 text-[0.78rem] leading-snug text-blue-900;
+}
+
+.min-stay-badge-icon {
+  @apply shrink-0 text-sm leading-none;
+}
+
+.input-with-icon {
+  @apply relative flex items-center;
+}
+
+.input-icon {
+  @apply pointer-events-none absolute left-2.5 text-sm leading-none text-slate-400;
+}
+
+.input-with-icon input {
+  @apply pl-8;
+}
+
+.btn-book {
+  @apply mt-1 py-2.5 text-sm shadow-sm transition-transform active:scale-[0.99];
 }
 
 .btn-row {

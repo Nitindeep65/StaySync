@@ -105,20 +105,32 @@
 
       <div class="card">
         <h3><span class="card-icon">☐</span>New booking</h3>
-        <p class="hint">Minimum stay: {{ minStayNights() }} nights for stays that include a Fri/Sat night.</p>
-        <label class="field">
-          <span>Check-in</span>
-          <input type="date" [ngModel]="bookingCheckIn()" (ngModelChange)="bookingCheckIn.set($event)" />
-        </label>
-        <label class="field">
-          <span>Check-out</span>
-          <input type="date" [ngModel]="bookingCheckOut()" (ngModelChange)="bookingCheckOut.set($event)" />
-        </label>
+        <div class="min-stay-badge">
+          <span class="min-stay-badge-icon">🗓️</span>
+          Minimum stay: {{ minStayNights() }} nights for stays that include a Fri/Sat night.
+        </div>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Check-in</span>
+            <input type="date" [ngModel]="bookingCheckIn()" (ngModelChange)="bookingCheckIn.set($event)" />
+          </label>
+          <label class="field">
+            <span>Check-out</span>
+            <input type="date" [ngModel]="bookingCheckOut()" (ngModelChange)="bookingCheckOut.set($event)" />
+          </label>
+        </div>
+
         <label class="field">
           <span>Guest name</span>
-          <input type="text" [ngModel]="bookingGuest()" (ngModelChange)="bookingGuest.set($event)" placeholder="Jane Doe" />
+          <div class="input-with-icon">
+            <input type="text" [ngModel]="bookingGuest()" (ngModelChange)="bookingGuest.set($event)" placeholder="Jane Doe" />
+          </div>
         </label>
-        <button type="button" class="btn-primary btn-block" (click)="submitBooking()">Book</button>
+
+        <button type="button" class="btn-primary btn-block btn-book" (click)="submitBooking()">
+          Book stay
+        </button>
       </div>
 
       <div class="card">
