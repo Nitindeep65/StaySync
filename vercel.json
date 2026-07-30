@@ -9,6 +9,13 @@
         {
             "source": "/api/:path*",
             "destination": "https://staysync-backend-huuu.onrender.com/api/:path*"
+        },
+        {
+            "source": "/(.*)",
+            "destination": {
+                "type": "service",
+                "service": "frontend"
+            }
         }
     ]
 }
