@@ -4,6 +4,7 @@ import {
   applyBlockStatus,
   applyRateOverride,
   buildCalendarRange,
+  cancelBooking,
   createBooking,
   reconcileReservations,
   MIN_STAY_NIGHTS,
@@ -99,6 +100,31 @@ test('dynamic pricing: minimum-stay rule only applies to stays that include a we
   const twoWeekendNights = createBooking(overrides, baseRate, '2026-08-07', '2026-08-09', 'Guest', 'booking-5');
   assert.equal(twoWeekendNights.ok, true);
   assert.equal(twoWeekendNights.updates?.length, MIN_STAY_NIGHTS);
+});
+
+test('cancelling a booking frees its nights back to available, preserving any rate override', () => {
+  const overrides = new Map<string, DayRecord>([
+    ['2026-08-10', { date: '2026-08-10', rate: 150, status: 'booked', bookingId: 'booking-6', bookingGuest: 'Guest' }],
+    ['2026-08-11', { date: '2026-08-11', rate: null, status: 'booked', bookingId: 'booking-6', bookingGuest: 'Guest' }],
+    ['2026-08-12', { date: '2026-08-12', rate: null, status: 'blocked' }]
+  ]);
+
+  const result = cancelBooking(overrides, 'booking-6');
+  assert.equal(result.ok, true);
+  assert.equal(result.updates?.length, 2);
+
+  const byDate = new Map(result.updates!.map((d) => [d.date, d]));
+  assert.equal(byDate.get('2026-08-10')?.status, 'available');
+  assert.equal(byDate.get('2026-08-10')?.rate, 150, 'rate override survives cancellation');
+  assert.equal(byDate.get('2026-08-10')?.bookingId, undefined);
+  assert.equal(byDate.get('2026-08-11')?.status, 'available');
+});
+
+test('cancelling an unknown booking id is rejected', () => {
+  const overrides = new Map<string, DayRecord>();
+  const result = cancelBooking(overrides, 'does-not-exist');
+  assert.equal(result.ok, false);
+  assert.match(result.error ?? '', /no booking found/i);
 });
 
 const feed: ImportReservation[] = [

@@ -6,6 +6,7 @@ import {
   applyBlockStatus,
   applyRateOverride,
   buildCalendarRange,
+  cancelBooking,
   createBooking,
   reconcileReservations,
   MIN_STAY_NIGHTS,
@@ -92,6 +93,17 @@ app.post('/bookings', (req, res) => {
   }
   store.saveOverrides(result.updates ?? []);
   return res.status(201).json({ bookingId, days: buildCalendarRange(store.getAllOverrides(), baseRate, checkIn, checkOut) });
+});
+
+app.delete('/bookings/:bookingId', (req, res) => {
+  const { bookingId } = req.params;
+  const overrides = store.getAllOverrides();
+  const result = cancelBooking(overrides, bookingId);
+  if (!result.ok) {
+    return res.status(404).json({ error: result.error });
+  }
+  store.saveOverrides(result.updates ?? []);
+  return res.json({ ok: true });
 });
 
 app.post('/import', (req, res) => {

@@ -206,6 +206,26 @@ export function createBooking(
   return { ok: true, updates };
 }
 
+export interface CancelBookingResult {
+  ok: boolean;
+  error?: string;
+  updates?: DayRecord[];
+}
+
+/** Frees every night tied to a bookingId back to 'available', preserving any rate override. */
+export function cancelBooking(overrides: Map<string, DayRecord>, bookingId: string): CancelBookingResult {
+  const updates: DayRecord[] = [];
+  for (const day of overrides.values()) {
+    if (day.bookingId === bookingId) {
+      updates.push({ date: day.date, rate: day.rate, status: 'available' });
+    }
+  }
+  if (updates.length === 0) {
+    return { ok: false, error: `No booking found with id ${bookingId}.` };
+  }
+  return { ok: true, updates };
+}
+
 /**
  * Reconciles a channel feed against current calendar state.
  *
