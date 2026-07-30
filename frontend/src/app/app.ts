@@ -128,7 +128,7 @@ export class App implements OnInit {
   protected rangeStart = signal<string | null>(null);
   protected rangeEnd = signal<string | null>(null);
   protected readonly rangeLabel = computed(() => {
-    if (!this.rangeStart()) return 'Click a day, then click another to select a range.';
+    if (!this.rangeStart()) return 'Click a day, then click another to select a range — also fills the booking form below.';
     if (!this.rangeEnd()) return `Start: ${this.rangeStart()} — click an end day (or the same day again).`;
     return `Selected: ${this.rangeStart()} to ${this.rangeEnd()}`;
   });
@@ -209,14 +209,28 @@ export class App implements OnInit {
     if (!this.rangeStart() || this.rangeEnd()) {
       this.rangeStart.set(cell.date);
       this.rangeEnd.set(null);
-      return;
-    }
-    if (cell.date < this.rangeStart()!) {
+    } else if (cell.date < this.rangeStart()!) {
       this.rangeEnd.set(this.rangeStart());
       this.rangeStart.set(cell.date);
     } else {
       this.rangeEnd.set(cell.date);
     }
+    this.syncBookingFieldsFromSelection();
+  }
+
+  /**
+   * Clicking the calendar picks the manual check-in/check-out fields too, so
+   * the user doesn't have to retype dates they just clicked. The selected
+   * days are treated as the nights to stay (inclusive), so check-out is
+   * auto-set to the day *after* the last clicked day — matching the
+   * exclusive-checkout convention the booking API expects.
+   */
+  private syncBookingFieldsFromSelection(): void {
+    const start = this.rangeStart();
+    if (!start) return;
+    const end = this.rangeEnd() ?? start;
+    this.bookingCheckIn.set(start);
+    this.bookingCheckOut.set(toIso(new Date(parseIso(end).getTime() + 86400000)));
   }
 
   protected isInSelection(date: string): boolean {
@@ -279,6 +293,7 @@ export class App implements OnInit {
         this.bookingCheckIn.set('');
         this.bookingCheckOut.set('');
         this.bookingGuest.set('');
+        this.clearSelection();
         this.loadMonth();
       },
       error: (err: ApiError) => {
