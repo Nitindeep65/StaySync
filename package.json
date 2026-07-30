@@ -1,0 +1,21 @@
+{
+  "name": "propertyflow-take-home",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p .",
+    "start": "node dist/src/server.js",
+    "test": "npm run build && node --test dist/test/availability.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.9.1",
+    "cors": "^2.8.0",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.5",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.16.0",
+    "typescript": "^5.8.3"
+  }
+}
