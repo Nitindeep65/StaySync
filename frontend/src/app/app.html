@@ -1,5 +1,5 @@
 <div class="page">
-  <header class="mb-5">
+  <header class="mb-5 flex items-start justify-between gap-4">
     <div class="brand">
       <span class="brand-mark">S</span>
       <div>
@@ -7,6 +7,10 @@
         <p class="subtitle">Seaside Cottage · base rate £{{ baseRate() }}/night</p>
       </div>
     </div>
+    <button type="button" class="help-btn" aria-haspopup="dialog" (click)="openHelp()">
+      <span class="help-btn-icon">?</span>
+      How to use
+    </button>
   </header>
 
   @if (status(); as s) {
@@ -157,3 +161,61 @@
     </aside>
   </div>
 </div>
+
+<div class="help-backdrop" [class.open]="helpOpen()" (click)="closeHelp()"></div>
+<aside class="help-drawer" [class.open]="helpOpen()" role="dialog" aria-modal="true" aria-label="How to use StaySync">
+  <div class="help-drawer-header">
+    <h2 class="m-0 text-lg font-bold">How to use StaySync</h2>
+    <button type="button" class="help-close" aria-label="Close" (click)="closeHelp()">✕</button>
+  </div>
+
+  <div class="help-drawer-body">
+    <div class="help-step">
+      <span class="help-step-number">1</span>
+      <div>
+        <p class="help-step-title">Reading the calendar</p>
+        <p>Each day shows its nightly rate and status by colour: <strong class="text-emerald-700">green</strong> = available, <strong class="text-red-700">red</strong> = booked (with the guest's name), <strong class="text-amber-700">amber</strong> = blocked. Friday and Saturday nights carry a +{{ weekendUpliftPercent() }}% weekend surcharge by default — you'll see it baked into the rate shown.</p>
+      </div>
+    </div>
+
+    <div class="help-step">
+      <span class="help-step-number">2</span>
+      <div>
+        <p class="help-step-title">Selecting a range</p>
+        <p>Click a day to start a selection, then click another day (or the same day again) to complete the range — it highlights blue. This range feeds the <strong>Rate &amp; availability</strong> card below, and also auto-fills the <strong>Check-in</strong> / <strong>Check-out</strong> fields in the New booking card, so you don't have to retype dates you just clicked.</p>
+      </div>
+    </div>
+
+    <div class="help-step">
+      <span class="help-step-number">3</span>
+      <div>
+        <p class="help-step-title">Setting a rate or blocking dates</p>
+        <p>With a range selected, enter a nightly rate and click <strong>Set rate</strong> to override it for those days — an override always wins over the weekend surcharge. Click <strong>Block</strong> to take those days off the market, or <strong>Unblock</strong> to make blocked days available again. Blocking a day that's already booked is rejected.</p>
+      </div>
+    </div>
+
+    <div class="help-step">
+      <span class="help-step-number">4</span>
+      <div>
+        <p class="help-step-title">Creating a booking</p>
+        <p>Check-in and check-out follow the standard hospitality convention: check-out is exclusive, so a stay from the 10th to the 12th books 2 nights (the 10th and 11th), and a new guest could check in on the 12th the same day. A clashing date range is rejected gracefully with a banner, never a raw error. Stays that include a Friday or Saturday night need a minimum of {{ minStayNights() }} nights; a pure weeknight stay has no minimum.</p>
+      </div>
+    </div>
+
+    <div class="help-step">
+      <span class="help-step-number">5</span>
+      <div>
+        <p class="help-step-title">Importing the channel feed</p>
+        <p>Click <strong>Import mock feed</strong> to reconcile a mock OTA/channel reservation feed into the calendar. The summary afterwards breaks down what happened: <em>Imported</em> (newly booked), <em>Duplicates in feed</em> (the same reservation appeared twice), <em>Already imported</em> (you've run this import before — safe to re-run any time), <em>Cancelled</em> (skipped), and <em>Conflicts</em> (a reservation that clashed with another booking or block, with the reason listed).</p>
+      </div>
+    </div>
+
+    <div class="help-step">
+      <span class="help-step-number">6</span>
+      <div>
+        <p class="help-step-title">Spotting bookings at a glance</p>
+        <p>The <strong>Bookings this month</strong> list under the calendar grid lists every booking in the visible month — guest, date range, and number of nights — so you don't have to scan every day cell to see who's staying when.</p>
+      </div>
+    </div>
+  </div>
+</aside>

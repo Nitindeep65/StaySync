@@ -1,4 +1,4 @@
-import { Component, computed, OnInit, signal } from '@angular/core';
+import { Component, computed, HostListener, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Api, ApiError } from './api';
 import { CalendarDay, ImportReservation, ImportSummary } from './models';
@@ -141,6 +141,7 @@ export class App implements OnInit {
   protected status = signal<StatusMessage | null>(null);
   protected importSummary = signal<ImportSummary | null>(null);
   protected loading = signal(false);
+  protected helpOpen = signal(false);
 
   constructor(private api: Api) {}
 
@@ -328,6 +329,19 @@ export class App implements OnInit {
 
   protected dismissStatus(): void {
     this.status.set(null);
+  }
+
+  protected openHelp(): void {
+    this.helpOpen.set(true);
+  }
+
+  protected closeHelp(): void {
+    this.helpOpen.set(false);
+  }
+
+  @HostListener('document:keydown.escape')
+  protected onEscapeKey(): void {
+    if (this.helpOpen()) this.closeHelp();
   }
 }
 
