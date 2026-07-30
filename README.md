@@ -25,7 +25,8 @@ npm install
 npm run build
 npm start
 ```
-This starts the API at `http://127.0.0.1:3100`. It saves data to
+This starts the API at `http://127.0.0.1:3100`, with every route under
+`/api` (e.g. `http://127.0.0.1:3100/api/property`). It saves data to
 `backend/data/staysync.db`, which is created automatically the first time
 (you can point it somewhere else with the `DB_PATH` environment variable).
 
@@ -36,7 +37,7 @@ npm install
 npm start
 ```
 This opens the app at `http://localhost:4200`. It talks straight to
-`http://127.0.0.1:3100` — no proxy setup needed, since the API allows
+`http://127.0.0.1:3100/api` — no proxy setup needed, since the API allows
 cross-origin requests (CORS) from the browser.
 
 **Running the tests**
@@ -48,17 +49,19 @@ cd frontend && npm test  # a basic test that the app component renders
 ## The API
 
 There's only one property, so URLs don't need a property id. Every date is
-written as `YYYY-MM-DD`.
+written as `YYYY-MM-DD`. Every route below lives under `/api` (e.g.
+`GET /api/property`) — this keeps local dev and the deployed site (see
+"Deploying to Vercel" below) working the exact same way.
 
 | Endpoint | What you send | What it does |
 |---|---|---|
-| `GET /property` | — | Returns the property name, base rate, and the current pricing rules (weekend surcharge %, minimum-stay nights) |
-| `GET /calendar?start=&end=` | — | Returns every day in that range (inclusive) with its rate, status, and guest name if booked. The rate already includes any weekend surcharge or manual override. |
-| `POST /rate` | `{start, end, rate}` | Sets a specific rate for every day in that range (inclusive) |
-| `POST /block` | `{start, end, blocked}` | Blocks or unblocks every day in that range (inclusive). Refuses to block a day that's already booked (returns 409). |
-| `POST /bookings` | `{checkIn, checkOut, guest}` | Creates a booking. `checkOut` is exclusive (see below). Rejects a stay that's too short (400) or clashes with an existing booking/block (409). |
-| `DELETE /bookings/:bookingId` | — | Cancels a booking and frees its nights back to available. Returns 404 if that booking id doesn't exist. |
-| `POST /import` | a list of reservations | Reconciles a channel feed into the calendar (explained below). `checkOut` is exclusive here too. |
+| `GET /api/property` | — | Returns the property name, base rate, and the current pricing rules (weekend surcharge %, minimum-stay nights) |
+| `GET /api/calendar?start=&end=` | — | Returns every day in that range (inclusive) with its rate, status, and guest name if booked. The rate already includes any weekend surcharge or manual override. |
+| `POST /api/rate` | `{start, end, rate}` | Sets a specific rate for every day in that range (inclusive) |
+| `POST /api/block` | `{start, end, blocked}` | Blocks or unblocks every day in that range (inclusive). Refuses to block a day that's already booked (returns 409). |
+| `POST /api/bookings` | `{checkIn, checkOut, guest}` | Creates a booking. `checkOut` is exclusive (see below). Rejects a stay that's too short (400) or clashes with an existing booking/block (409). |
+| `DELETE /api/bookings/:bookingId` | — | Cancels a booking and frees its nights back to available. Returns 404 if that booking id doesn't exist. |
+| `POST /api/import` | a list of reservations | Reconciles a channel feed into the calendar (explained below). `checkOut` is exclusive here too. |
 
 **Why "inclusive" for some endpoints and "exclusive" for others?** `rate`
 and `block` work on specific calendar cells — "set these exact days" — so
@@ -152,10 +155,27 @@ A few choices worth explaining:
   (asks for confirmation first) so you don't have to hunt through the grid
   to find and undo one.
 
+## Deploying to Vercel
+
+`vercel.json` at the repo root deploys this as two services from one
+project: `frontend` (built with the Angular framework preset) and `backend`
+(run as a plain Node service). A rewrite sends anything under `/api/*` to
+the backend and everything else to the frontend, so both are served from
+the same domain — which is also why the frontend calls a relative `/api`
+path in production instead of a hardcoded address (see
+`frontend/src/environments/`).
+
+One real limitation: the backend's SQLite file lives at `/tmp` in that
+environment, which is writable but **not persistent** — data can be wiped
+on a redeploy or when the service restarts after being idle. That's fine
+for demoing the app, but a production deployment would need a real hosted
+database (e.g. Postgres, Turso) instead of a local SQLite file.
+
 ## Key decisions and trade-offs
 
 - **SQLite instead of Postgres/Mongo**: nothing to install or configure —
-  it's just a file, so anyone can run this project immediately.
+  it's just a file, so anyone can run this project immediately. The
+  trade-off shows up in the Vercel deployment above.
 - **Only storing days that changed, not every day**: keeps the database
   small and avoids pre-filling years of rows. The trade-off is that reading
   a calendar range has to scan the whole overrides table rather than using
@@ -179,7 +199,6 @@ A few choices worth explaining:
   bigger test suite, login system) — the task only asked for one bonus
   feature. I picked dynamic pricing because it uses the same kind of
   thinking as the import logic (rules layered on top of plain data).
-- Hosting this online — it's built to run on your own machine only.
 - A seasonal price multiplier (a second pricing idea from the brief) — the
   weekend surcharge and minimum-stay rule already show the same pattern,
   and a third rule would mostly add complexity about which rule wins,
@@ -187,6 +206,8 @@ A few choices worth explaining:
 
 ## What I'd do with more time
 
+- Swap SQLite-on-`/tmp` for a real hosted database, so data survives a
+  redeploy on Vercel instead of living in ephemeral storage.
 - Make the calendar-range lookup faster (an indexed query) once the
   overrides table got large enough for it to matter.
 - Add tests that go through the actual HTTP routes, not just the logic
