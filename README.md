@@ -51,7 +51,7 @@ cd frontend && npm test  # a basic test that the app component renders
 There's only one property, so URLs don't need a property id. Every date is
 written as `YYYY-MM-DD`. Every route below lives under `/api` (e.g.
 `GET /api/property`) — this keeps local dev and the deployed site (see
-"Deploying to Vercel" below) working the exact same way.
+"Deployment" below) working the exact same way.
 
 | Endpoint | What you send | What it does |
 |---|---|---|
@@ -154,6 +154,11 @@ A few choices worth explaining:
   (guest, dates, number of nights), with a **Cancel** button per booking
   (asks for confirmation first) so you don't have to hunt through the grid
   to find and undo one.
+- On the deployed site, if the backend's Render free-tier instance has spun
+  down from inactivity, the first load can take up to ~50s. Rather than
+  show nothing, a banner appears after a couple of seconds explaining
+  that it's waking up, and clears itself the moment data arrives — it
+  never shows at all if the backend was already warm.
 
 ## Deployment
 
@@ -192,7 +197,8 @@ file.
 
 - **SQLite instead of Postgres/Mongo**: nothing to install or configure —
   it's just a file, so anyone can run this project immediately. The
-  trade-off shows up in the Vercel deployment above.
+  trade-off shows up in the Deployment section above (no persistent disk
+  on Render's free tier).
 - **Only storing days that changed, not every day**: keeps the database
   small and avoids pre-filling years of rows. The trade-off is that reading
   a calendar range has to scan the whole overrides table rather than using
@@ -201,9 +207,12 @@ file.
 - **No login system, one property only**: this was out of scope for the
   task. The database is still shaped so adding more properties later would
   just mean adding a `property_id` column, not rebuilding everything.
-- **The frontend calls the API by its full address, not through a build
-  proxy** — this keeps setup simple when running both `npm start` commands
-  side by side.
+- **The frontend's API base URL is environment-aware, not a build proxy**:
+  in local dev it's a full address (`http://127.0.0.1:3100/api`); in the
+  production build it's swapped for a relative `/api` at build time (via
+  `frontend/src/environments/` + Angular's `fileReplacements`), which is
+  what lets Vercel's rewrite transparently proxy it to the Render backend
+  without the frontend code needing to know where it's deployed.
 
 ## What I deliberately left out
 
@@ -212,10 +221,11 @@ file.
   change a booking in place).
 - The calendar-file (`.ics`) version of the channel feed — only the JSON
   version is supported.
-- The other bonus-feature options (mobile support, deploying it online, a
-  bigger test suite, login system) — the task only asked for one bonus
-  feature. I picked dynamic pricing because it uses the same kind of
-  thinking as the import logic (rules layered on top of plain data).
+- The other bonus-feature options (mobile support, a bigger test suite,
+  login system) — the task only asked for one bonus feature. I picked
+  dynamic pricing because it uses the same kind of thinking as the import
+  logic (rules layered on top of plain data). Deployment happened
+  separately afterwards, not as the chosen stretch goal.
 - A seasonal price multiplier (a second pricing idea from the brief) — the
   weekend surcharge and minimum-stay rule already show the same pattern,
   and a third rule would mostly add complexity about which rule wins,
@@ -223,8 +233,11 @@ file.
 
 ## What I'd do with more time
 
-- Swap SQLite-on-`/tmp` for a real hosted database, so data survives a
-  redeploy on Vercel instead of living in ephemeral storage.
+- Swap the local SQLite file for a real hosted database (e.g. Postgres,
+  Turso), so data survives a Render redeploy or an idle spin-down instead
+  of living on ephemeral storage.
+- Attach a persistent disk on Render (a paid-tier feature) as a lighter
+  interim fix, short of a full database migration.
 - Make the calendar-range lookup faster (an indexed query) once the
   overrides table got large enough for it to matter.
 - Add tests that go through the actual HTTP routes, not just the logic
